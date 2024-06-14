@@ -1,0 +1,56 @@
+server:
+  # The URL at which the Cranberry instance will be reachable.
+  # Cranberry currently does not support running under a subpath.
+  self: "http://localhost/"
+  # The port on which the HTTP-server should listen.
+  port: 80
+
+database:
+  # The host at which the PostgreSQL database can be reached.
+  host: localhost
+  # The port at which the PostgreSQL database can be reached.
+  port: 5432
+  # The username to log into the database.
+  user: user
+  # The password to log into the database.
+  password: password
+
+ldap:
+  # Whether Cranberry should allow user login via LDAP.
+  # If this is false, every username/password pair is rejected and anyone will be able
+  # to create short links.
+  enabled: false
+  # The host of the LDAP server.
+  host: localhost
+  # Whether the LDAP server uses TLS.
+  tls: false
+  # The port of the LDAP server.
+  port: 389
+  # A dn used to bind to the LDAP server.
+  binddn: null
+  # The password used to bind to the LDAP server.
+  bindpassword: null
+  # The base dn to search in.
+  basedn: ""
+  # An LDAP filter that filters for users. This will be ANDed with a filter for the username.
+  usersearch: "(objectClass=person)"
+  # Configure, which attributes Cranberry should read.
+  attributes:
+    # The attribute that contains the username to log in.
+    uid: "uid"
+    # The attribute that contains the groups, a user is a member of.
+    membership: "memberOf"
+  # Configure, how Cranberry translates LDAP entries to permissions.
+  permissions:
+    # What should users be able to do without being logged in?
+    #  create_anonymous: Create short links with a random id.
+    #  create_named:     Create short links with a custom id.
+    #  manage:           Create, view, edit and delete all short links.
+    anonymous: "none" # create_anonymous, create_named, manage
+    groups:
+      # The dn of an LDAP group that allows to create short links with a random id.
+      createanonymous: "" 
+      # The dn of an LDAP group that allows to create short links with a custom id.
+      createnamed: ""
+      # The dn of an LDAP group that allows to manage short links.
+      manage: ""
