@@ -23,6 +23,9 @@ validShortLink string = not (null string) && string /= "_" && all validChar stri
   where validChar :: Char -> Bool
         validChar char = C.isLetter char || C.isDigit char || char == '_' || char =='-' || char == '.'
 
+validShortLinkWildcard :: String -> Bool
+validShortLinkWildcard string = not (null string) && (validShortLink string || validShortLink (init string) && '*' == last string)
+
 validRedirectUrl :: URL -> Bool
 validRedirectUrl (URL url) = T.pack "http:/" `T.isPrefixOf` lowerUrl || T.pack "https:/" `T.isPrefixOf` lowerUrl
   where lowerUrl = T.toLower url
@@ -31,6 +34,7 @@ newtype URL = URL T.Text deriving (Eq, Show)
 resolveOnBaseUrl :: URL -> T.Text -> URL
 resolveOnBaseUrl (URL base) rel
   | T.null rel                     = URL base
+  | T.pack "/" `T.isPrefixOf` rel  = resolveOnBaseUrl (URL base) $ T.tail rel
   | T.pack "/" `T.isSuffixOf` base = URL $ base `T.append` rel
   | otherwise                      = URL $ base `T.append` T.pack "/" `T.append` rel
 instance Aeson.FromJSON URL where

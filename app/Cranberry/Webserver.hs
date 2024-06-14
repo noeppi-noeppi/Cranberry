@@ -34,7 +34,8 @@ route db auth baseURL = asum [
   dir "_" control,
   mainPage,
   redirect,
-  errorPage notFound "Not found"]
+  redirectRecursive,
+  errorPage notFound "Not Found"]
   where mainPage :: ServerPart Response
         mainPage = do
           nullDir
@@ -43,8 +44,15 @@ route db auth baseURL = asum [
         redirect = path $ \id -> do
           nullDir
           method GET
+          guardRq (\_ -> validShortLink id)
           liftSIO (getShortLink db id) $ \dest -> case dest of
             Just url -> found url $ toResponse "Found"
+            Nothing -> errorPage notFound "Not Found"
+        redirectRecursive = path $ \id -> do
+          method GET
+          guardRq (\_ -> validShortLink id)
+          liftSIO (getShortLink db $ id ++ "*") $ \dest -> case dest of
+            Just url -> uriRest $ \rest -> found (resolveOnBaseUrl url (T.pack rest)) $ toResponse "Found"
             Nothing -> errorPage notFound "Not Found"
         control :: ServerPart Response
         control = asum [
@@ -98,12 +106,13 @@ route db auth baseURL = asum [
         apiCreateNamed :: ServerPart Response
         apiCreateNamed = do
           method POST
-          require auth CreateNamedShortLinks $ urlIdBodyEndpoint $ \id body -> do
-            if id /= "_" && validShortLink id && validRedirectUrl (URL body)
-              then liftSIO (putNewShortLink db id $ URL body) $ \success -> if success
-                then ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
-                else errorPage conflict "Conflict"
-              else errorPage badRequest "Invalid Identifier or URL"
+          requireUser auth CreateNamedShortLinks $ \user -> urlIdBodyEndpoint $ \id body -> do
+            let mayCreate = validShortLink id || (hasPermission user ManageShortLinks && validShortLinkWildcard id)
+              in if id /= "_" && mayCreate && validRedirectUrl (URL body)
+                then liftSIO (putNewShortLink db id $ URL body) $ \success -> if success
+                  then ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
+                  else errorPage conflict "Conflict"
+                else errorPage badRequest "Invalid Identifier or URL"
         apiList :: ServerPart Response
         apiList = do
           nullDir
@@ -114,7 +123,9 @@ route db auth baseURL = asum [
         apiRevise = do
           method POST
           require auth ManageShortLinks $ urlIdBodyEndpoint $ \id body -> do
-            liftSIO (putShortLink db id $ URL body) $ \_ -> ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
+            if id /= "_" && validShortLinkWildcard id && validRedirectUrl (URL body)
+              then liftSIO (putShortLink db id $ URL body) $ \_ -> ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
+              else errorPage badRequest "Invalid Identifier or URL"
         apiDelete :: ServerPart Response
         apiDelete = do
           method POST

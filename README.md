@@ -27,9 +27,13 @@ cabal build && cp "$(cabal -v0 list-bin exe:cranberry)" /usr/local/bin/cranberry
 
 ### Run Cranberry
 
-Cranberry uses file named `config.yaml` inside the current working directory as configuration. You can find the default values and the explanations for the various configuration keys [here](./config.yaml).
+Cranberry uses a file named `config.yaml` inside the current working directory as configuration. You can find the default values and the explanations for the various configuration keys [here](./config.yaml). When using the Docker container, you can mount it to `/data/config.yaml`.
 
 To run Cranberry, just invoke the `cranberry` binary (or run the docker container). You'll then be able to access the web-ui in your browser.
+
+### Wildcard shortlinks
+
+By default a shortlink with name `hello` will only redirect the resource `/hello` but not `/hello/world`. However users with the `manage` permission can also create wildcard shortlinks. Using `hello*` as a shortlink name will **not** redirect `/hello` but redirect everything below `/hello` while keeping the extra part of the URL intact.
 
 ### API
 
