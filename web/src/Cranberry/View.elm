@@ -2,7 +2,8 @@ module Cranberry.View exposing (..)
 
 import Cranberry.Model exposing (..)
 import Color
-import Html exposing (Html)
+import Html
+import Html.Attributes
 import Element exposing (..)
 import Widget as W
 import Widget.Material as M
@@ -21,18 +22,23 @@ color c = case Color.toRgba c of
 icon : I.Icon -> Widget.Icon.Icon msg
 icon ic = Widget.Icon.elmFeather I.toHtml ic
 
-doLayout : M.Palette -> Element msg -> Element msg -> Maybe (W.Modal msg) -> Html msg
+fadeOutMask : List (Element.Attribute msg)
+fadeOutMask = List.map htmlAttribute [
+  Html.Attributes.style "mask-mode" "alpha",
+  Html.Attributes.style "mask-image" "linear-gradient(270deg,transparent,white 2em)"]
+
+doLayout : M.Palette -> Element msg -> Element msg -> Maybe (W.Modal msg) -> Html.Html msg
 doLayout palette root notifs modal =
   let modalAttrs = (modal |> Maybe.map (\m -> W.singleModal [m]) |> Maybe.withDefault [])
   in root |> layout ([Background.color (color palette.background), Font.color (color palette.on.background)] ++ modalAttrs ++ [inFront notifs])
 
-view : Model -> Html Msg
+view : Model -> Html.Html Msg
 view model = case model of
   Undecided -> el [centerX, centerY] (W.circularProgressIndicator (M.progressIndicator M.defaultPalette) Nothing) |> layout []
   Failed -> el [centerX, centerY] (text "Something went wrong.") |> layout []
   Model content -> modalView content (if content.display.darkMode then M.darkPalette else M.defaultPalette)
 
-modalView : ContentModel -> M.Palette -> Html Msg
+modalView : ContentModel -> M.Palette -> Html.Html Msg
 modalView model palette = case model.auth of
   Anonymous form -> if model.display.showLoginDialog
     then doLayout palette (pageView model palette) (notifications model palette) (Just (loginDialog form palette))
@@ -143,7 +149,8 @@ managePageView model palette = column [width fill, spacing 5, paddingXY 10 0] (D
 
 managePageRow : M.Palette -> (LinkId, URL) -> Element Msg
 managePageRow palette (linkId, url) = row [width fill, spacing 5] [
-  el [width (px 150), clipY] (text linkId), el [width fill, clipY, paddingXY 5 0] (text url),
+  el ([width (fillPortion 1), clipX, padding 5] ++ fadeOutMask) (text linkId),
+  el ([width (fillPortion 5), clipX, padding 5] ++ fadeOutMask) (text url),
   W.textButton (M.containedButton palette) {text = "Edit", onPress = Just (MsgRevise linkId)},
   W.textButton (M.containedButton palette) {text = "Delete", onPress = Just (MsgDelete linkId)}]
 
