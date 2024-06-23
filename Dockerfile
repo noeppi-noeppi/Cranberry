@@ -1,5 +1,5 @@
 FROM debian:bookworm AS base
-RUN apt-get update && apt-get install -y libffi8 libgmp10 libtinfo5 libpq5 zlib1g libtasn1-6 && apt-get clean
+RUN apt-get update && apt-get install -y tini libffi8 libgmp10 libtinfo5 libpq5 zlib1g libtasn1-6 && apt-get clean
 
 FROM node:bookworm AS nodeenv
 RUN npm install --global uglify-js
@@ -30,4 +30,5 @@ RUN cabal build && cp "$(cabal -v0 list-bin exe:cranberry)" /data/bin/cranberry
 FROM base
 COPY --from=build /data/bin/cranberry /usr/local/bin/cranberry
 WORKDIR /data
+ENTRYPOINT [ "tini", "--" ]
 CMD [ "cranberry" ]
