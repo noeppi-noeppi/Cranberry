@@ -3,7 +3,8 @@ module Cranberry.Model exposing (..)
 import Dict exposing (Dict)
 import Http
 
-type Model = Undecided | Failed | Model ContentModel
+type Model = Undecided Flags | Failed | Model Flags ContentModel
+type alias Flags = { viewportWidth : Int, viewportHeight : Int }
 type alias ContentModel = {
   notifications : List Notification,
   auth : Authentication,

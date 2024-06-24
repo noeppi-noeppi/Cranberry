@@ -5,18 +5,20 @@ import Cranberry.Request exposing (..)
 import Dict
 import Http
 
-init : () -> (Model, Cmd Msg)
-init _ = (Undecided, requestMeAnonymous)
+type alias JSFlags = { w: Int, h: Int }
+
+init : JSFlags -> (Model, Cmd Msg)
+init flags = (Undecided {viewportWidth = flags.w, viewportHeight = flags.h}, requestMeAnonymous)
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (msg, model) of
   (_, Failed) -> (Failed, Cmd.none)
-  (RspMe (Ok me), Undecided) -> case initContent me.role of
-    (newContent, cmd) -> (Model newContent, cmd)
-  (RspMe (Err _), Undecided) -> (Failed, Cmd.none)
-  (_, Undecided) -> (Undecided, Cmd.none)
-  (_, Model content) -> case updateContent msg content of
-    (newContent, cmd) -> (Model newContent, cmd)
+  (RspMe (Ok me), Undecided flags) -> case initContent me.role of
+    (newContent, cmd) -> (Model flags newContent, cmd)
+  (RspMe (Err _), Undecided _) -> (Failed, Cmd.none)
+  (_, Undecided flags) -> (Undecided flags, Cmd.none)
+  (_, Model flags content) -> case updateContent msg content of
+    (newContent, cmd) -> (Model flags newContent, cmd)
 
 initContent : Role -> (ContentModel, Cmd Msg)
 initContent role = let content = { notifications = [], auth = Anonymous (LoginForm "" ""), role = role, shortLink = ShortLinkForm "" "", linkMap = Dict.empty, display = defaultDisplay}

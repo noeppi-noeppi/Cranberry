@@ -25,12 +25,17 @@ skeleton title head content = H.docTypeHtml $ do
     head
   H.body content
 
+indexStyle :: Html
+indexStyle = do
+  H.meta ! A.name (s "viewport") ! A.content (s "width=device-width,height=device-height,interactive-widget=resizes-visual")
+  H.style ! A.type_ (s "text/css") $ s "body{padding:0;margin:0;}"
+
 indexPage :: Html
-indexPage = skeleton "Cranberry" (H.style ! A.type_ (s "text/css") $ s "body{padding:0;margin:0;}") $ do
+indexPage = skeleton "Cranberry" indexStyle $ do
   H.pre ! A.id (s "elm") $ mempty
   H.script ! A.src (s "/_/index.js") ! A.type_ (s "application/javascript") $ mempty
   H.script ! A.type_ (s "application/javascript") $ do
-    s "var app = Elm.Main.init({node:document.getElementById('elm')});"
+    s "var app = Elm.Main.init({node:document.getElementById('elm'),flags:{w:window.innerWidth,h:window.innerHeight}});"
 
 errorPage :: String -> Html
 errorPage message = skeleton "Error" (H.link ! A.rel (s "stylesheet") ! A.href (s "/_/style.css")) $ do
