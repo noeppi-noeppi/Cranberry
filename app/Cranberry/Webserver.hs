@@ -102,7 +102,9 @@ route db auth baseURL = asum [
           nullDir -- First check is nullDir, so apiCreate propagates through to apiCreateNamed before auth
           method POST
           require auth CreateAnonymousShortLinks $ withBody $ \body -> do
-            liftSIO (putRandomShortLink db $ URL body) $ \id -> ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
+            if validRedirectUrl (URL body)
+              then liftSIO (putRandomShortLink db $ URL body) $ \id -> ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
+              else errorPage badRequest "Invalid Identifier or URL"
         apiCreateNamed :: ServerPart Response
         apiCreateNamed = do
           method POST
