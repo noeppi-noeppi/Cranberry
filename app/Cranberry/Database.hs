@@ -33,8 +33,8 @@ instance Configuration PostgresConfig where
 instance Disposable PG.Connection where
   dispose = PG.close
 
-connectStorage :: PostgresConfig -> IO PG.Connection
-connectStorage config = do
+connectDatabase :: PostgresConfig -> IO PG.Connection
+connectDatabase config = do
   connectInfo <- return $ PG.ConnectInfo {
     PG.connectHost = host config,
     PG.connectPort = fromIntegral $ port config,
@@ -43,11 +43,10 @@ connectStorage config = do
     PG.connectDatabase = maybe (user config) id $ database config
   }
   con <- PG.connect connectInfo
-  _ <- PG.withTransaction con (setupDatabase con)
   return con
 
 setupDatabase :: PG.Connection -> IO ()
-setupDatabase con = do
+setupDatabase con = PG.withTransaction con $ do
   _ <- PG.execute con (fromString "CREATE TABLE IF NOT EXISTS short_links (\
     \name        TEXT PRIMARY KEY NOT NULL,\
     \destination TEXT NOT NULL);") ()
@@ -81,10 +80,10 @@ instance StorageAdapter PG.Connection where
     rs <- runSelect con shortLinkListSelect :: IO [(String, T.Text)]
     return $ Map.map URL $ Map.fromList rs
   getUserForAccessToken con token = do
-    _ <- runDelete con  accessTokenClean
     rs <- runSelect con $ accessTokenSelect token :: IO [String]
     return $ listToMaybe rs
   createAccessToken con user = do
+    _ <- runDelete con accessTokenClean
     token <- randomAccessToken
     success <- putNewAccessToken token user
     if success
@@ -95,6 +94,7 @@ instance StorageAdapter PG.Connection where
             modifiedCount <- runInsert con $ accessTokenInsert token user (Time.calendarTimeTime 600)
             return $ modifiedCount > 0
   revokeAccessToken con token = do
+    _ <- runDelete con accessTokenClean
     _ <- runDelete con $ accessTokenDelete token
     return ()
 
