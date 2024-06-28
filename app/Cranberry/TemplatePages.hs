@@ -3,11 +3,12 @@
 module Cranberry.TemplatePages where
 
 import Data.String ( IsString(..) )
-import Data.Text as T
 import Data.ByteString (ByteString)
 import Data.FileEmbed
 import Cranberry.Types
 import Text.Blaze.Html (Html, ToMarkup, toHtml, (!))
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 
@@ -35,7 +36,7 @@ indexPage = skeleton "Cranberry" indexStyle $ do
   H.pre ! A.id (s "elm") $ mempty
   H.script ! A.src (s "/_/index.js") ! A.type_ (s "application/javascript") $ mempty
   H.script ! A.type_ (s "application/javascript") $ do
-    s "var app = Elm.Main.init({node:document.getElementById('elm'),flags:{w:window.innerWidth,h:window.innerHeight}});"
+    toHtml $ TE.decodeUtf8Lenient $(embedFile "web/src/Main.js")
 
 errorPage :: String -> Html
 errorPage message = skeleton "Error" (H.link ! A.rel (s "stylesheet") ! A.href (s "/_/style.css")) $ do

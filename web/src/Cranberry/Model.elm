@@ -43,13 +43,14 @@ type alias URL = String
 type Token = Token String
 
 type alias HttpMaybe a = Result Http.Error a
+type alias ViewportSize = { w: Int, h: Int }
 
 type Msg = MsgLogin | MsgLogout | MsgCreate | MsgReplace | MsgRevise LinkId | MsgDelete LinkId
   | MsgChangeUsernameInput String | MsgChangePasswordInput String | MsgChangeLinkIdInput LinkId 
   | MsgChangeUrlInput URL | MsgDiscardNotification Int | MsgRefreshLinkList | RspLogin (HttpMaybe PayloadLogin)
   | RspLogout (HttpMaybe ()) | RspMe (HttpMaybe PayloadMe) | RspListShortLinks (HttpMaybe ShortLinkMap)
   | RspCreate (HttpMaybe URL) | RspRevise (HttpMaybe URL) | RspDelete (HttpMaybe URL) | DspDarkMode Bool
-  | DspSwitchPage Int | DspLoginVisible Bool
+  | DspSwitchPage Int | DspLoginVisible Bool | SubViewport ViewportSize
 
 type alias PayloadLogin = { token : String, me : PayloadMe }
 type alias PayloadMe = { user : Maybe String, role : Role }

@@ -24,6 +24,7 @@ RUN elm make --optimize --output=index.full.js src/Main.elm && \
     npx uglify-js index.full.js --compress \
       'pure_funcs=[F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9],pure_getters,keep_fargs=false,unsafe_comps,unsafe' | \
     npx uglify-js --mangle --output index.js
+RUN mv src/Main.js src/Main.full.js && npx uglify-js src/Main.full.js --compress --mangle --enclose --output src/Main.js
 WORKDIR /data/build
 RUN cabal build && cp "$(cabal -v0 list-bin exe:cranberry)" /data/bin/cranberry
 

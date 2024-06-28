@@ -5,14 +5,16 @@ import Cranberry.Request exposing (..)
 import Dict
 import Http
 
-type alias JSFlags = { w: Int, h: Int }
+type alias JSFlags = { viewport: ViewportSize }
 
 init : JSFlags -> (Model, Cmd Msg)
-init flags = (Undecided {viewportWidth = flags.w, viewportHeight = flags.h}, requestMeAnonymous)
+init flags = (Undecided {viewportWidth = flags.viewport.w, viewportHeight = flags.viewport.h}, requestMeAnonymous)
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (msg, model) of
   (_, Failed) -> (Failed, Cmd.none)
+  (SubViewport {w, h}, Undecided _) -> (Undecided {viewportWidth = w, viewportHeight = h}, Cmd.none)
+  (SubViewport {w, h}, Model _ content) -> (Model {viewportWidth = w, viewportHeight = h} content, Cmd.none)
   (RspMe (Ok me), Undecided flags) -> case initContent me.role of
     (newContent, cmd) -> (Model flags newContent, cmd)
   (RspMe (Err _), Undecided _) -> (Failed, Cmd.none)
@@ -95,3 +97,4 @@ updateContent msg model = case (msg, model) of
   (DspDarkMode darkMode, {display}) -> ({model | display = {display | darkMode = darkMode}}, Cmd.none)
   (DspSwitchPage page, {display}) -> ({model | display = {display | page = page}}, maybeRefreshLinkMap model)
   (DspLoginVisible visible, {display}) -> ({model | display = {display | showLoginDialog = visible}}, Cmd.none)
+  (SubViewport _, _) -> (model, Cmd.none)
