@@ -40,7 +40,7 @@ authenticateToken (Token token) = Http.header "Authorization" ("Bearer " ++ toke
 authenticate : ContentModel -> List Http.Header
 authenticate model = case model.auth of
   LoggedIn _ token -> [ authenticateToken token, Http.header "X-No-Authenticate" "1" ]
-  _ -> [ Http.header "X-No-WWW-Authenticate" "1" ]
+  _ -> [ Http.header "X-No-Authenticate" "1" ]
 
 authenticatedGet : ContentModel -> {url : URL, expect : Http.Expect msg} -> Cmd msg
 authenticatedGet model obj = Http.request {

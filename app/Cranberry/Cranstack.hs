@@ -59,7 +59,7 @@ unauthorized :: a -> ServerPart a
 unauthorized a = do
   setResponseCode 401
   xNoPrompt <- getHeaderM "X-No-Authenticate"
-  Control.Monad.when (xNoPrompt == Just "1") $ setHeaderM "WWW-Authenticate" "Basic realm=\"login\""
+  Control.Monad.when (xNoPrompt /= Just "1") $ setHeaderM "WWW-Authenticate" "Basic realm=\"login\""
   return a
 
 found :: URL -> a -> ServerPart a
