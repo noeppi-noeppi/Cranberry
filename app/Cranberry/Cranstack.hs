@@ -46,13 +46,13 @@ withUser auth func = do
             InvalidCredentials -> errorPage unauthorized "Unauthorized"
             Success user -> func user
 
-requireUser :: (Authenticator a) => a -> Permission -> (UserPrincipal -> ServerPart Response) -> ServerPart Response
+requireUser :: (Authenticator a) => a -> PermissionLevel -> (UserPrincipal -> ServerPart Response) -> ServerPart Response
 requireUser auth permission serverPart = withUser auth $ \user -> case user of
-  _ | hasPermission user permission -> serverPart user
+  _ | hasPermissionLevel user permission -> serverPart user
   _ | isNothing (userId user) -> errorPage unauthorized "Unauthorized"
   _ -> errorPage forbidden "Forbidden"
 
-require :: (Authenticator a) => a -> Permission -> ServerPart Response -> ServerPart Response
+require :: (Authenticator a) => a -> PermissionLevel -> ServerPart Response -> ServerPart Response
 require auth permission serverPart = requireUser auth permission (\_ -> serverPart)
 
 unauthorized :: a -> ServerPart a

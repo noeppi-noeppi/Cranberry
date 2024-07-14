@@ -109,7 +109,7 @@ route db auth baseURL = asum [
         apiCreateNamed = do
           method POST
           requireUser auth CreateNamedShortLinks $ \user -> urlIdBodyEndpoint $ \id body -> do
-            let mayCreate = validShortLink id || (hasPermission user ManageShortLinks && validShortLinkWildcard id)
+            let mayCreate = validShortLink id || (hasPermissionLevel user ManageShortLinks && validShortLinkWildcard id)
               in if id /= "_" && mayCreate && validRedirectUrl (URL body)
                 then liftSIO (putNewShortLink db id $ URL body) $ \success -> if success
                   then ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
@@ -137,16 +137,12 @@ route db auth baseURL = asum [
 getMe :: UserPrincipal -> MeResponse
 getMe user = MeResponse {
   user = userId user,
-  role = case True of
-    _ | hasPermission user ManageShortLinks -> "manage"
-    _ | hasPermission user CreateNamedShortLinks -> "create_named"
-    _ | hasPermission user CreateAnonymousShortLinks -> "create_anonymous"
-    _ -> "none"
+  role = userPermissionLevel user
   }
 
 data MeResponse = MeResponse {
   user :: Maybe String,
-  role :: String
+  role :: PermissionLevel
 } deriving Generic
 instance Aeson.ToJSON MeResponse where
   toEncoding = Aeson.genericToEncoding Aeson.defaultOptions

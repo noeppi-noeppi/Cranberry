@@ -60,17 +60,36 @@ class Disposable a => StorageAdapter a where
   createAccessToken :: a -> String -> IO String
   revokeAccessToken :: a -> String -> IO ()
 
-data Permission = CreateAnonymousShortLinks | CreateNamedShortLinks | ManageShortLinks deriving (Eq, Ord, Show)
+data PermissionLevel = NoPermission | CreateAnonymousShortLinks | CreateNamedShortLinks | ManageShortLinks deriving (Eq, Ord, Show)
 data UserCredentials = Anonymous | Login { loginUsername :: String, loginPassword :: String } | Token { accessToken :: String } deriving Eq
 data AuthenticationResult = Success UserPrincipal | InvalidCredentials | ServiceUnavailable deriving Show
 data UserPrincipal = UserPrincipal {
   userId :: Maybe String,
-  userPermissions :: Set.Set Permission,
+  userPermissionLevel :: PermissionLevel,
   userAccessToken :: Maybe String
 } deriving Show
 
-hasPermission :: UserPrincipal -> Permission -> Bool
-hasPermission user permission = Set.member permission (userPermissions user)
+highestPermissionLevel :: Foldable f => f PermissionLevel -> PermissionLevel
+highestPermissionLevel f = if null f then NoPermission else maximum f
+
+hasPermissionLevel :: UserPrincipal -> PermissionLevel -> Bool
+hasPermissionLevel user permission = userPermissionLevel user >= permission
+
+readPermissionLevel :: MonadFail a => String -> a PermissionLevel
+readPermissionLevel "manage" = return ManageShortLinks
+readPermissionLevel "create_named" = return CreateNamedShortLinks
+readPermissionLevel "create_anonymous" = return CreateAnonymousShortLinks
+readPermissionLevel "none" = return NoPermission
+readPermissionLevel wrong = fail $ "Invalid permission level: " ++ wrong
+
+instance Aeson.FromJSON PermissionLevel where
+  parseJSON json = (Aeson.parseJSON json :: Aeson.Types.Parser String) >>= readPermissionLevel
+instance Aeson.ToJSON PermissionLevel where
+  toJSON permissionLevel = Aeson.toJSON $ case permissionLevel of
+    ManageShortLinks -> "manage"
+    CreateNamedShortLinks -> "create_named"
+    CreateAnonymousShortLinks -> "create_anonymous"
+    _ -> "none"
 
 class Disposable a => Authenticator a where
   authenticate :: a -> UserCredentials -> IO AuthenticationResult

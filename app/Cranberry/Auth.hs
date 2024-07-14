@@ -88,7 +88,7 @@ data StorageAdapter db => LdapAuthenticator db = LdapDisabled | LdapEnabled {
   ldapSearchFilter :: Ldap.Filter,
   ldapUidAttribute :: Ldap.Attr,
   ldapMembershipAttribute :: Ldap.Attr,
-  ldapAnonymousPermissions :: Set.Set Permission,
+  ldapAnonymousPermissionLevel :: PermissionLevel,
   ldapGroups :: LdapGroupSyncConfig,
   ldapTokenStorage :: db
 }
@@ -100,12 +100,7 @@ connectAuth config db = if not $ enabled config
     searchFilter <- case parseLdapFilter $ userSearch config of
       Just filter -> return filter
       Nothing -> throw InvalidLdapFilter
-    anonymousPermissions <- case anonymous $ permissions config of
-      "none" -> return Set.empty
-      "create_anonymous" -> return createAnonPermissions
-      "create_named" -> return createNamedPermissions
-      "manage" -> return managePermissions
-      wrong -> throw $ InvalidPermission wrong
+    anonymousPermissionLevel <- readPermissionLevel $ anonymous $ permissions config :: IO PermissionLevel
     return $ LdapEnabled {
       ldapHost = if tls config
         then Ldap.Tls (host config) Ldap.defaultTlsSettings
@@ -117,25 +112,18 @@ connectAuth config db = if not $ enabled config
       ldapSearchFilter = searchFilter,
       ldapUidAttribute = Ldap.Attr $ T.pack $ uid $ attributes config,
       ldapMembershipAttribute = Ldap.Attr $ T.pack $ membership $ attributes config,
-      ldapAnonymousPermissions = anonymousPermissions,
+      ldapAnonymousPermissionLevel = anonymousPermissionLevel,
       ldapGroups = groups $ permissions config,
       ldapTokenStorage = db}
-
-managePermissions :: Set.Set Permission
-managePermissions = Set.fromList [CreateAnonymousShortLinks, CreateNamedShortLinks, ManageShortLinks]
-createNamedPermissions :: Set.Set Permission
-createNamedPermissions = Set.fromList [CreateAnonymousShortLinks, CreateNamedShortLinks]
-createAnonPermissions :: Set.Set Permission
-createAnonPermissions = Set.fromList [CreateAnonymousShortLinks]
 
 instance StorageAdapter db => Disposable (LdapAuthenticator db)
 instance StorageAdapter db => Authenticator (LdapAuthenticator db) where
   authenticate LdapDisabled Anonymous = return $ Success $ UserPrincipal {
-    userId = Nothing, userPermissions = createNamedPermissions, userAccessToken = Nothing}
+    userId = Nothing, userPermissionLevel = CreateNamedShortLinks, userAccessToken = Nothing}
   authenticate LdapDisabled (Login username _) = return InvalidCredentials
   authenticate LdapDisabled (Token _) = return InvalidCredentials
   authenticate con@LdapEnabled { } Anonymous = return $ Success $ UserPrincipal {
-    userId = Nothing, userPermissions = ldapAnonymousPermissions con, userAccessToken = Nothing}
+    userId = Nothing, userPermissionLevel = ldapAnonymousPermissionLevel con, userAccessToken = Nothing}
   authenticate con@LdapEnabled { } credentials = do
     res <- Ldap.with (ldapHost con) (ldapPort con) ldapTransaction
     case res of
@@ -193,17 +181,17 @@ instance StorageAdapter db => Authenticator (LdapAuthenticator db) where
 
           ldapConstructUser :: String -> Ldap.SearchEntry -> Maybe String -> UserPrincipal
           ldapConstructUser username (Ldap.SearchEntry _ userAttrs) maybeAccessToken = UserPrincipal {
-            userId = Just userId, userPermissions = permissions, userAccessToken = maybeAccessToken}
+            userId = Just userId, userPermissionLevel = permissionLevel, userAccessToken = maybeAccessToken}
             where decode :: Ldap.AttrValue -> String
                   decode bytes = T.unpack $ TE.decodeUtf8Lenient bytes
                   userId :: String
                   userId = maybe username decode $ listToMaybe $ concatMap snd $ find ((ldapUidAttribute con ==) . fst) userAttrs
                   groups :: [String]
                   groups = map decode $ concatMap snd $ find ((ldapMembershipAttribute con ==) . fst) userAttrs
-                  groupPermissions :: String -> Set.Set Permission
-                  groupPermissions group = Set.unions [
-                    if createAnonymous (ldapGroups con) == group then createAnonPermissions else Set.empty,
-                    if createNamed (ldapGroups con) == group then createNamedPermissions else Set.empty,
-                    if manage (ldapGroups con) == group then managePermissions else Set.empty]
-                  permissions :: Set.Set Permission
-                  permissions = Set.unions $ map groupPermissions groups
+                  groupPermissionLevel :: String -> PermissionLevel
+                  groupPermissionLevel group = highestPermissionLevel [
+                    if createAnonymous (ldapGroups con) == group then CreateAnonymousShortLinks else NoPermission,
+                    if createNamed (ldapGroups con) == group then CreateNamedShortLinks else NoPermission,
+                    if manage (ldapGroups con) == group then ManageShortLinks else NoPermission]
+                  permissionLevel :: PermissionLevel
+                  permissionLevel = highestPermissionLevel $ map groupPermissionLevel groups

@@ -47,7 +47,7 @@ The supported endpoints are
 - `POST /_/api/revoke`: Revokes the access token that was used to make the request. This endpoint is only available using Token-Auth.
 - `POST /_/api/create`: Creates a new short link. The request body must contains the short link target as a URL. The server will reply with the newly created short link URL.
 - `POST /_/api/create/:name`: Same as above but assign a custom name for the short link. If the name already exists, the result is `409 Conflict`.
-- `GET /_/api/list`: Lists all known short links as a JSON-object where the keys are the link ids and the values are the lin targets.
+- `GET /_/api/list`: Lists all known short links as a JSON-object where the keys are the link ids and the values are the link targets.
 - `POST /_/api/revise/:name`: Same as named create but replaces the link, if it already exists.
 - `POST /_/api/delete/:name`: Deletes the short link with the given id. The server will reply with the deleted short link URL.
 
