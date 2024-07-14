@@ -58,7 +58,7 @@ modalView model args = case model.auth of
   _ -> doLayout args (pageView model args) (notifications model args) Nothing
 
 notifications : ContentModel -> LayoutArgs -> Element Msg
-notifications model args = model.notifications |> notifList 0 args |> column [padding 3, spacing 3, width fill, alignRight, alignBottom] 
+notifications model args = model.notifications |> notifList 0 args |> column [padding 3, spacing 3, width (ifMobile args fill shrink), alignRight, alignBottom] 
 
 notifList : Int -> LayoutArgs -> List Notification -> List (Element Msg)
 notifList idx args list = case list of
