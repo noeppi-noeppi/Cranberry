@@ -5,25 +5,25 @@ import Cranberry.Request exposing (..)
 import Dict
 import Http
 
-type alias JSFlags = { viewport: ViewportSize }
+type alias JSFlags = { viewport: ViewportSize, prefersDarkTheme: Bool }
 
 init : JSFlags -> (Model, Cmd Msg)
-init flags = (Undecided {viewportWidth = flags.viewport.w, viewportHeight = flags.viewport.h}, requestMeAnonymous)
+init flags = (Undecided {viewportWidth = flags.viewport.w, viewportHeight = flags.viewport.h, prefersDarkTheme = flags.prefersDarkTheme}, requestMeAnonymous)
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (msg, model) of
   (_, Failed) -> (Failed, Cmd.none)
-  (SubViewport {w, h}, Undecided _) -> (Undecided {viewportWidth = w, viewportHeight = h}, Cmd.none)
-  (SubViewport {w, h}, Model _ content) -> (Model {viewportWidth = w, viewportHeight = h} content, Cmd.none)
-  (RspMe (Ok me), Undecided flags) -> case initContent me.role of
+  (SubViewport {w, h}, Undecided flags) -> (Undecided {flags | viewportWidth = w, viewportHeight = h}, Cmd.none)
+  (SubViewport {w, h}, Model flags content) -> (Model {flags | viewportWidth = w, viewportHeight = h} content, Cmd.none)
+  (RspMe (Ok me), Undecided flags) -> case initContent flags me.role of
     (newContent, cmd) -> (Model flags newContent, cmd)
   (RspMe (Err _), Undecided _) -> (Failed, Cmd.none)
   (_, Undecided flags) -> (Undecided flags, Cmd.none)
   (_, Model flags content) -> case updateContent msg content of
     (newContent, cmd) -> (Model flags newContent, cmd)
 
-initContent : Role -> (ContentModel, Cmd Msg)
-initContent role = let content = { notifications = [], auth = Anonymous (LoginForm "" ""), role = role, shortLink = ShortLinkForm "" "", linkMap = Dict.empty, display = defaultDisplay}
+initContent : Flags -> Role -> (ContentModel, Cmd Msg)
+initContent flags role = let content = { notifications = [], auth = Anonymous (LoginForm "" ""), role = role, shortLink = ShortLinkForm "" "", linkMap = Dict.empty, display = defaultDisplay flags}
   in case role of
     ManageShortLinks -> (content, requestShortLinkMap content)
     _ -> (content, Cmd.none)

@@ -4,7 +4,7 @@ import Dict exposing (Dict)
 import Http
 
 type Model = Undecided Flags | Failed | Model Flags ContentModel
-type alias Flags = { viewportWidth : Int, viewportHeight : Int }
+type alias Flags = { viewportWidth : Int, viewportHeight : Int, prefersDarkTheme: Bool }
 type alias ContentModel = {
   notifications : List Notification,
   auth : Authentication,
@@ -31,9 +31,9 @@ type alias DisplayPrefs = {
   page : Int,
   showLoginDialog : Bool}
 
-defaultDisplay : DisplayPrefs
-defaultDisplay = {
-  darkMode = False,
+defaultDisplay : Flags -> DisplayPrefs
+defaultDisplay flags = {
+  darkMode = flags.prefersDarkTheme,
   page = 0,
   showLoginDialog = False}
 

@@ -7,7 +7,10 @@ function viewportFlags() {
 
 var app = Elm.Main.init({
     node: document.getElementById('elm'),
-    flags: { viewport: viewportFlags() }
+    flags: {
+        viewport: viewportFlags(),
+        prefersDarkTheme: window.matchMedia('(prefers-color-scheme:dark)').matches
+    }
 })
 
 window.addEventListener('resize', function() { app.ports.viewport.send(viewportFlags()) });
