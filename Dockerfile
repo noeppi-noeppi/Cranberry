@@ -8,8 +8,8 @@ FROM base AS build
 RUN apt-get install -y build-essential curl libffi-dev libgmp-dev libncurses5 libncurses-dev postgresql-client libpq-dev zlib1g-dev && apt-get clean
 WORKDIR /data/bin
 ENV PATH="/data/bin:${PATH}"
-RUN curl -Lo ghcup 'https://downloads.haskell.org/~ghcup/0.1.22.0/x86_64-linux-ghcup-0.1.22.0' && \
-    echo 'bf213f4dfd2271b46ca52e2f14e96850ce32e9115e5acc90f1dc5a4e815e32af  ghcup' | sha256sum -c && \
+RUN curl -Lo ghcup 'https://downloads.haskell.org/~ghcup/0.1.30.0/x86_64-linux-ghcup-0.1.30.0' && \
+    echo 'fea4499d0cbdf71c554bfb7febebb81d1bcd09a4c4cfb7a90905ef9bff4931cb  ghcup' | sha256sum -c && \
     chmod +x ghcup
 RUN ghcup --downloader curl install ghc --isolate /data --force --set 9.4.8 && rm -rf "${HOME}/.ghcup"
 RUN ghcup --downloader curl install cabal --isolate /data/bin --set && cabal update && rm -rf "${HOME}/.ghcup"

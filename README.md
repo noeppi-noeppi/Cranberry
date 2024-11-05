@@ -1,6 +1,6 @@
 # Cranberry
 
-Cranberry is a simple URL-shortener written is Haskell and Elm. It uses PostgreSQL as a backend and supports user synchronization via LDAP.
+Cranberry is a simple URL-shortener written in Haskell and Elm. It uses PostgreSQL as a backend and supports user synchronization via LDAP.
 
 ### Install Cranberry
 
