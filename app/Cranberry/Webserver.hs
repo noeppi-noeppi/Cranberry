@@ -41,18 +41,20 @@ route db auth baseURL = asum [
           nullDir
           method GET
           found (URL $ T.pack "/_") $ toResponse ()
+        redirect :: ServerPart Response
         redirect = path $ \id -> do
           nullDir
           method GET
           guardRq (\_ -> validShortLink id)
           liftSIO (getShortLink db id) $ \dest -> case dest of
-            Just url -> found url $ toResponse "Found"
+            Just url -> found url $ toResponse ()
             Nothing -> errorPage notFound "Not Found"
+        redirectRecursive :: ServerPart Response
         redirectRecursive = path $ \id -> do
           method GET
           guardRq (\_ -> validShortLink id)
           liftSIO (getShortLink db $ id ++ "*") $ \dest -> case dest of
-            Just url -> uriRest $ \rest -> found (resolveOnBaseUrl url (T.pack rest)) $ toResponse "Found"
+            Just url -> uriRest $ \rest -> found (resolveOnBaseUrl url (T.pack rest)) $ toResponse ()
             Nothing -> errorPage notFound "Not Found"
         control :: ServerPart Response
         control = asum [
