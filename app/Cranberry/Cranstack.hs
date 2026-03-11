@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Cranberry.Cranstack (
   module Cranberry.Cranstack,
   module Happstack.Server,
@@ -29,22 +27,17 @@ withUser auth func = do
     Nothing -> errorPage badRequest "Bad Request"
   where credentials :: Maybe BS.ByteString -> Maybe UserCredentials
         credentials (Just authString)
-          | "Basic " `BS.isPrefixOf` authString = case Base64.decode $ BS.drop 6 authString of
-            Left err -> Nothing
-            Right decoded -> parseHeader $ T.unpack $ TE.decodeUtf8Lenient decoded
           | "Bearer " `BS.isPrefixOf` authString = Just $ Token $ dropWhile (==' ') $ T.unpack $ TE.decodeUtf8Lenient $ BS.drop 7 authString
           | otherwise = Nothing
         credentials Nothing = Just Anonymous
-        parseHeader :: String -> Maybe UserCredentials
-        parseHeader string = if null password then Nothing else Just $ Login username (tail password)
-          where username = takeWhile (':' /=) string
-                password = dropWhile (':' /=) string
         doLogin :: UserCredentials -> ServerPart Response
         doLogin login = do
-          liftSIO (authenticate auth login) $ \result -> case result of
-            ServiceUnavailable -> errorPage serviceUnavailable "Service Unavailable"
-            InvalidCredentials -> errorPage unauthorized "Unauthorized"
-            Success user -> func user
+          liftSIO (authenticate auth login) $ \result -> withUser' result func
+
+withUser' :: AuthenticationResult -> (UserPrincipal -> ServerPart Response) -> ServerPart Response
+withUser' ServiceUnavailable _ = errorPage serviceUnavailable "Service Unavailable"
+withUser' InvalidCredentials _ = errorPage unauthorized "Unauthorized"
+withUser' (Success user) func = func user
 
 requireUser :: (Authenticator a) => a -> PermissionLevel -> (UserPrincipal -> ServerPart Response) -> ServerPart Response
 requireUser auth permission serverPart = withUser auth $ \user -> case user of
@@ -58,8 +51,6 @@ require auth permission serverPart = requireUser auth permission (\_ -> serverPa
 unauthorized :: a -> ServerPart a
 unauthorized a = do
   setResponseCode 401
-  xNoPrompt <- getHeaderM "X-No-Authenticate"
-  Control.Monad.when (xNoPrompt /= Just "1") $ setHeaderM "WWW-Authenticate" "Basic realm=\"login\""
   return a
 
 found :: URL -> a -> ServerPart a

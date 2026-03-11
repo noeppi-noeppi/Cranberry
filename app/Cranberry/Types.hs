@@ -56,12 +56,12 @@ class Disposable a => StorageAdapter a where
   putRandomShortLink :: a -> URL -> IO String
   deleteShortLink :: a -> String -> IO ()
   listShortLinks :: a -> IO (Map.Map String URL)
-  getUserForAccessToken :: a -> String -> IO (Maybe String)
-  createAccessToken :: a -> String -> IO String
+  getAccessTokenDetails :: a -> String -> IO (Maybe (String, PermissionLevel))
+  createAccessToken :: a -> String -> PermissionLevel -> IO String
   revokeAccessToken :: a -> String -> IO ()
 
 data PermissionLevel = NoPermission | CreateAnonymousShortLinks | CreateNamedShortLinks | ManageShortLinks deriving (Eq, Ord, Show)
-data UserCredentials = Anonymous | Login { loginUsername :: String, loginPassword :: String } | Token { accessToken :: String } deriving Eq
+data UserCredentials = Anonymous | Token { accessToken :: String } deriving Eq
 data AuthenticationResult = Success UserPrincipal | InvalidCredentials | ServiceUnavailable deriving Show
 data UserPrincipal = UserPrincipal {
   userId :: Maybe String,
@@ -86,10 +86,10 @@ instance Aeson.FromJSON PermissionLevel where
   parseJSON json = (Aeson.parseJSON json :: Aeson.Types.Parser String) >>= readPermissionLevel
 instance Aeson.ToJSON PermissionLevel where
   toJSON permissionLevel = Aeson.toJSON $ case permissionLevel of
-    ManageShortLinks -> "manage"
-    CreateNamedShortLinks -> "create_named"
-    CreateAnonymousShortLinks -> "create_anonymous"
-    _ -> "none"
+    ManageShortLinks -> "manage" :: String
+    CreateNamedShortLinks -> "create_named" :: String
+    CreateAnonymousShortLinks -> "create_anonymous" :: String
+    _ -> "none" :: String
 
 class Disposable a => Authenticator a where
   authenticate :: a -> UserCredentials -> IO AuthenticationResult

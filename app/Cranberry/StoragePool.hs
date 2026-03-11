@@ -1,4 +1,4 @@
-module Cranberry.StoragePool where
+module Cranberry.StoragePool (connectPooledStorage, setupPooledStorage) where
 
 import Cranberry.Types
 import Data.Pool
@@ -19,6 +19,6 @@ instance StorageAdapter a => StorageAdapter (Pool a) where
   putRandomShortLink pool url = withResource pool $ \con -> putRandomShortLink con url
   deleteShortLink pool id = withResource pool $ \con -> deleteShortLink con id
   listShortLinks pool = withResource pool $ \con -> listShortLinks con
-  getUserForAccessToken pool token = withResource pool $ \con -> getUserForAccessToken con token
-  createAccessToken pool token = withResource pool $ \con -> createAccessToken con token
+  getAccessTokenDetails pool token = withResource pool $ \con -> getAccessTokenDetails con token
+  createAccessToken pool permissionLevel token = withResource pool $ \con -> createAccessToken con permissionLevel token
   revokeAccessToken pool token = withResource pool $ \con -> revokeAccessToken con token

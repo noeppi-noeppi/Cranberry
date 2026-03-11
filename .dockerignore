@@ -1,7 +1,9 @@
 /Dockerfile
 /.dockerignore
 /.idea
+/.git
 /scripts
 /dist-newstyle
 /web/index.*
 /web/elm-stuff
+/bin

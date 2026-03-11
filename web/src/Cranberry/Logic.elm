@@ -2,29 +2,41 @@ module Cranberry.Logic exposing (..)
 
 import Cranberry.Model exposing (..)
 import Cranberry.Request exposing (..)
+import Browser.Navigation
 import Dict
 import Http
 
-type alias JSFlags = { viewport: ViewportSize, prefersDarkTheme: Bool }
+type alias JSFlags = { viewport: ViewportSize, oidc: Maybe String, prefersDarkTheme: Bool }
 
 init : JSFlags -> (Model, Cmd Msg)
-init flags = (Undecided {viewportWidth = flags.viewport.w, viewportHeight = flags.viewport.h, prefersDarkTheme = flags.prefersDarkTheme}, requestMeAnonymous)
+init flags = let request = case flags.oidc of
+                             Just query -> requestOidcLogin query
+                             Nothing -> requestMeAnonymous
+               in (Undecided {viewportWidth = flags.viewport.w, viewportHeight = flags.viewport.h, prefersDarkTheme = flags.prefersDarkTheme}, request)
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model = case (msg, model) of
   (_, Failed) -> (Failed, Cmd.none)
   (SubViewport {w, h}, Undecided flags) -> (Undecided {flags | viewportWidth = w, viewportHeight = h}, Cmd.none)
   (SubViewport {w, h}, Model flags content) -> (Model {flags | viewportWidth = w, viewportHeight = h} content, Cmd.none)
-  (RspMe (Ok me), Undecided flags) -> case initContent flags me.role of
+  (RspMe (Ok me), Undecided flags) -> case initContent flags me of
     (newContent, cmd) -> (Model flags newContent, cmd)
+  (RspLogin (Ok login), Undecided flags) -> case initContent flags login.me of
+    (initialContent, _) -> case updateContent (RspLogin (Ok login)) initialContent of
+      -- discard action from initContent as it might attempt to request the list of short links without a token
+      (newContent, cmd) -> (Model flags newContent, cmd)
   (RspMe (Err _), Undecided _) -> (Failed, Cmd.none)
+  (RspLogin (Err _), Undecided _) -> (Failed, Cmd.none)
   (_, Undecided flags) -> (Undecided flags, Cmd.none)
   (_, Model flags content) -> case updateContent msg content of
     (newContent, cmd) -> (Model flags newContent, cmd)
 
-initContent : Flags -> Role -> (ContentModel, Cmd Msg)
-initContent flags role = let content = { notifications = [], auth = Anonymous (LoginForm "" ""), role = role, shortLink = ShortLinkForm "" "", linkMap = Dict.empty, display = defaultDisplay flags}
-  in case role of
+initContent : Flags -> PayloadMe -> (ContentModel, Cmd Msg)
+initContent flags me =
+  let
+    authMethods = { login = List.any (\s -> s == "login") me.authMethods, oidc = List.any (\s -> s == "oidc") me.authMethods }
+    content = { notifications = [], auth = Anonymous (LoginForm "" ""), authMethods = authMethods, role = me.role, shortLink = ShortLinkForm "" "", linkMap = Dict.empty, display = defaultDisplay flags}
+  in case me.role of
     ManageShortLinks -> (content, requestShortLinkMap content)
     _ -> (content, Cmd.none)
 
@@ -54,6 +66,9 @@ updateContent msg model = case (msg, model) of
   (MsgLogin, {auth, display}) -> case auth of
     Anonymous form -> ({model | auth = Anonymous {username = "", password = ""}, display = {display | showLoginDialog = False}}, requestLogin form.username form.password)
     LoggedIn _ _ -> (Failure "Already logged in." |> notify model, Cmd.none)
+  (MsgLoginOidc, {auth}) -> case auth of
+    Anonymous _ -> (model, Browser.Navigation.load "/_/api/oidc")
+    LoggedIn _ _ -> (Failure "Already logged in." |> notify model, Cmd.none)
   (MsgLogout, {auth}) -> case auth of
     Anonymous _ -> (Failure "Not logged in." |> notify model, Cmd.none)
     LoggedIn _ _ -> (model, requestLogout model)
@@ -79,7 +94,7 @@ updateContent msg model = case (msg, model) of
   (MsgDiscardNotification idx, {notifications}) -> ({model | notifications = (List.take idx notifications) ++ (List.drop (idx + 1) notifications) }, Cmd.none)
   (MsgRefreshLinkList, _) -> (model, maybeRefreshLinkMap model)
   (RspMe (Ok me), _) -> ({model | role = me.role}, maybeRefreshLinkMap model)
-  (RspLogin (Ok login), _) -> ({model | role = login.me.role, auth = LoggedIn (Maybe.withDefault "<unknown>" login.me.user) (Token login.token)}, maybeRefreshLinkMap model)
+  (RspLogin (Ok login), _) -> let newModel = {model | role = login.me.role, auth = LoggedIn (Maybe.withDefault "<unknown>" login.me.user) (Token login.token)} in (newModel, maybeRefreshLinkMap newModel)
   (RspLogout (Ok ()), _) -> let newModel = {model | auth = Anonymous {username = "", password = ""}, role = NoPermission} in (newModel, requestMe newModel)
   (RspListShortLinks (Ok links), _) -> ({model | linkMap = links}, Cmd.none)
   (RspCreate (Ok url), _) -> (Info ("Link created: " ++ url) |> notify model, maybeRefreshLinkMap model)
@@ -96,5 +111,9 @@ updateContent msg model = case (msg, model) of
   (RspDelete (Err err), _) -> reportError model err
   (DspDarkMode darkMode, {display}) -> ({model | display = {display | darkMode = darkMode}}, Cmd.none)
   (DspSwitchPage page, {display}) -> ({model | display = {display | page = page}}, maybeRefreshLinkMap model)
-  (DspLoginVisible visible, {display}) -> ({model | display = {display | showLoginDialog = visible}}, Cmd.none)
+  (DspLoginShow, {authMethods, display}) -> case (authMethods.login, authMethods.oidc) of
+    (False, False) -> (Failure "Login is disabled." |> notify model, Cmd.none)
+    (False, True) -> (model, Browser.Navigation.load "/_/api/oidc")
+    _ -> ({model | display = {display | showLoginDialog = True}}, Cmd.none)
+  (DspLoginHide, {display}) -> ({model | display = {display | showLoginDialog = False}}, Cmd.none)
   (SubViewport _, _) -> (model, Cmd.none)

@@ -1,10 +1,13 @@
-module Cranberry.Webserver where
+module Cranberry.Webserver (launchServer, WebserverConfig (..)) where
 
 import Cranberry.Types
+import Cranberry.Auth
 import Cranberry.Cranstack
 import qualified Cranberry.TemplatePages as Template
 import qualified Happstack.Server
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.ByteString as BS
 import qualified Data.Aeson as Aeson
 
 data WebserverConfig = WebserverConfig {
@@ -18,8 +21,14 @@ instance Configuration WebserverConfig where
     port = 80
   }
 
-launchServer :: (StorageAdapter s, Authenticator a) => WebserverConfig -> s -> a -> IO ()
-launchServer config db auth = simpleHTTP serverConfig (route db auth $ URL $ T.pack $ self config)
+launchServer :: StorageAdapter db => WebserverConfig -> db -> AuthConfig -> IO ()
+launchServer config db authConfig = do
+  let openIdRedirectURL = resolveOnBaseUrl (URL $ T.pack $ self config) "/_/api/oidc/return" :: URL
+  auth <- authSetup authConfig db openIdRedirectURL
+  launchServer' config db auth
+
+launchServer' :: StorageAdapter db => WebserverConfig -> db -> AuthBackend db -> IO ()
+launchServer' config db auth = simpleHTTP serverConfig (route db auth $ URL $ T.pack $ self config)
   where serverConfig :: Conf
         serverConfig = Conf {
           Happstack.Server.port = port config,
@@ -29,7 +38,7 @@ launchServer config db auth = simpleHTTP serverConfig (route db auth $ URL $ T.p
           threadGroup = threadGroup nullConf
         }
 
-route :: (StorageAdapter s, Authenticator a) => s -> a -> URL -> ServerPart Response
+route :: StorageAdapter db => db -> AuthBackend db -> URL -> ServerPart Response
 route db auth baseURL = asum [
   dir "_" control,
   mainPage,
@@ -61,13 +70,14 @@ route db auth baseURL = asum [
           dir "index.js" $ serve Template.indexScript,
           dir "style.css" $ serve Template.stylesheet,
           dir "api" api,
-          serve Template.indexPage,
+          serve (Template.indexPage False),
           errorPage notFound "Not found"]
         api :: ServerPart Response
         api = asum [
           dir "me" apiMe,
-          dir "grant" apiGrant,
-          dir "revoke" apiRevoke,
+          dir "login" apiLogin,
+          dir "oidc" (asum [apiOidcRedirect, dir "return" (serve $ Template.indexPage True), dir "login" apiOidcLogin]),
+          dir "logout" apiLogout,
           dir "create" apiCreate,
           dir "list" apiList,
           dir "revise" apiRevise,
@@ -77,19 +87,34 @@ route db auth baseURL = asum [
         apiMe = withUser auth $ \user -> do
           nullDir
           method GET
-          ok $ toResponse $ Aeson.toJSON $ getMe user
-        apiGrant :: ServerPart Response
-        apiGrant = do
+          getMe auth user
+        apiLogin :: ServerPart Response
+        apiLogin = do
           nullDir
           method POST
-          withUser auth $ \user -> case (userId user, userAccessToken user) of
-            (Just username, Nothing) -> liftSIO (createAccessToken db username) $ \token -> ok $ toResponse $ Aeson.toJSON TokenResponse {
-              me = getMe user,
-              token = token
-            }
-            _ -> errorPage forbidden "Forbidden"
-        apiRevoke :: ServerPart Response
-        apiRevoke = do
+          withBody $ \body -> do
+            let username = T.takeWhile (':' /=) body
+            let password =  T.drop 1 $ T.dropWhile (':' /=) body
+            liftSIO (authLdap auth (T.unpack username, T.unpack password)) $ \result -> do
+              withUser' result $ \user -> getMeToken auth user
+        apiOidcRedirect :: ServerPart Response
+        apiOidcRedirect = do
+          nullDir
+          liftSIO (authOpenIdInit auth) $ \case
+            Nothing -> errorPage serviceUnavailable "Service Unavailable"
+            Just openIdRedir -> do
+              addCookie Session (mkCookie "cranberry-login" $ T.unpack $ T.decodeUtf8Lenient $ openIdRedirectCookie openIdRedir) { httpOnly = True, secure = True, sameSite = SameSiteLax }
+              found (openIdRedirectURL openIdRedir) $ toResponse ()
+        apiOidcLogin :: ServerPart Response
+        apiOidcLogin = do
+          cookie <- (T.encodeUtf8 . T.pack) <$> lookCookieValue "cranberry-login"
+          code <- queryString (lookBS "code")
+          state <- queryString (lookBS "state")
+          let ret = OpenIdReturn { openIdReturnCookie = cookie, openIdReturnCode = BS.toStrict code, openIdReturnState = BS.toStrict state }
+          liftSIO (authOpenId auth ret) $ \result -> do
+            withUser' result $ \user -> getMeToken auth user
+        apiLogout :: ServerPart Response
+        apiLogout = do
           nullDir
           method POST
           withUser auth $ \user -> case userAccessToken user of
@@ -136,15 +161,25 @@ route db auth baseURL = asum [
           require auth ManageShortLinks $ urlIdEndpoint $ \id -> do
             liftSIO (deleteShortLink db id) $ \_ -> ok $ toResponse $ resolveOnBaseUrl baseURL $ T.pack id
 
-getMe :: UserPrincipal -> MeResponse
-getMe user = MeResponse {
+getMe' :: StorageAdapter db => AuthBackend db -> UserPrincipal -> MeResponse
+getMe' auth user = MeResponse {
   user = userId user,
-  role = userPermissionLevel user
-  }
+  role = userPermissionLevel user,
+  auth_methods = authListMethods auth
+}
+
+getMe :: StorageAdapter db => AuthBackend db -> UserPrincipal -> ServerPart Response
+getMe auth user = ok $ toResponse $ Aeson.toJSON $ getMe' auth user
+
+getMeToken :: StorageAdapter db => AuthBackend db -> UserPrincipal -> ServerPart Response
+getMeToken auth user = case userAccessToken user of
+  Just accessToken -> ok $ toResponse $ Aeson.toJSON $ TokenResponse { me = getMe' auth user, token = accessToken }
+  Nothing -> liftIO (putStrLn "Authentication backend did not create a token.") >> errorPage internalServerError "Internal Server Error"
 
 data MeResponse = MeResponse {
   user :: Maybe String,
-  role :: PermissionLevel
+  role :: PermissionLevel,
+  auth_methods :: [String]
 } deriving Generic
 instance Aeson.ToJSON MeResponse where
   toEncoding = Aeson.genericToEncoding Aeson.defaultOptions

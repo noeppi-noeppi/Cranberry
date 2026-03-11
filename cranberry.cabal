@@ -14,35 +14,58 @@ executable cranberry
     other-modules:      Cranberry.Database
     other-modules:      Cranberry.StoragePool
     other-modules:      Cranberry.Auth
+    other-modules:      Cranberry.Auth.Ldap
+    other-modules:      Cranberry.Auth.LdapParser
+    other-modules:      Cranberry.Auth.OpenId
     other-modules:      Cranberry.TemplatePages
     other-modules:      Cranberry.Cranstack
     other-modules:      Cranberry.Webserver
-    other-modules:      Cranberry.LdapParser
 
-    build-depends:      base ^>= 4.17.2.1
-    build-depends:      random ^>= 1.2.1.2
-    build-depends:      bytestring ^>= 0.11.5.3
-    build-depends:      utf8-string ^>= 1.0.2
+    build-depends:      base ^>= 4.22.0.0
+    build-depends:      random ^>= 1.3.1
+    build-depends:      bytestring ^>= 0.12.2.0
     build-depends:      base64-bytestring ^>= 1.2.1.0
-    build-depends:      text ^>= 2.0.2
-    build-depends:      containers ^>= 0.6.7
-    build-depends:      profunctors ^>= 5.6.2
+    build-depends:      text ^>= 2.1.4
+    build-depends:      containers ^>= 0.7
+    build-depends:      profunctors ^>= 5.6.3
     build-depends:      product-profunctors ^>= 0.11.1.1
-    build-depends:      resource-pool ^>= 0.4.0.0
-    build-depends:      time ^>= 1.12.2
-    build-depends:      directory ^>= 1.3.8.4
-    build-depends:      aeson ^>= 2.2.2.0
-    build-depends:      unix ^>= 2.8.5.1
+    build-depends:      lens ^>= 5.3.6
+    build-depends:      resource-pool ^>= 0.5.0.0
+    build-depends:      time ^>= 1.14
+    build-depends:      directory ^>= 1.3.10.1
+    build-depends:      aeson ^>= 2.2.3.0
+    build-depends:      unix ^>= 2.8.8.0
     build-depends:      attoparsec ^>= 0.14.4
     build-depends:      conferer ^>= 1.1.0.0
     build-depends:      conferer-yaml ^>= 1.1.0.0
-    build-depends:      postgresql-simple ^>= 0.7.0.0
-    build-depends:      opaleye ^>= 0.10.3.1
-    build-depends:      happstack-server ^>= 7.9.0
+    build-depends:      postgresql-simple ^>= 0.7.0.1
+    build-depends:      opaleye ^>= 0.10.7.0
+    build-depends:      network-uri ^>= 2.6.4.2
+    build-depends:      happstack-server ^>= 7.9.3
+    build-depends:      http-client ^>= 0.7.19
+    build-depends:      http-client-tls ^>= 0.3.6.4
     build-depends:      blaze-html ^>= 0.9.2.0
-    build-depends:      ldap-client ^>= 0.4.2
+    build-depends:      ldap-client ^>= 0.4.3
+    build-depends:      openid-connect ^>= 0.2.0
+    build-depends:      jose ^>= 0.10.0.1
+    build-depends:      cookie ^>= 0.4.6
     build-depends:      file-embed ^>= 0.0.16.0
 
     hs-source-dirs:     app
-    default-extensions: DeriveGeneric
     default-language:   Haskell2010
+    default-extensions: DeriveGeneric
+    default-extensions: OverloadedStrings
+    default-extensions: InstanceSigs
+    default-extensions: LambdaCase
+    default-extensions: PatternSynonyms
+    default-extensions: ViewPatterns
+    default-extensions: TupleSections
+    default-extensions: FlexibleInstances
+    default-extensions: TypeFamilies
+    default-extensions: DataKinds
+    default-extensions: StandaloneDeriving
+    default-extensions: FlexibleContexts
+    default-extensions: UndecidableInstances
+    default-extensions: TypeOperators
+    default-extensions: DefaultSignatures
+    default-extensions: TemplateHaskell

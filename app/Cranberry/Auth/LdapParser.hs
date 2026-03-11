@@ -1,6 +1,4 @@
-{-# LANGUAGE OverloadedStrings, StandaloneDeriving #-}
-
-module Cranberry.LdapParser where
+module Cranberry.Auth.LdapParser (parseLdapFilter) where
 
 import Data.Either (Either)
 import Data.Text (Text)

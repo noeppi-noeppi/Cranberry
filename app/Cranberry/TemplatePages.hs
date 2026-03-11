@@ -1,6 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
-
-module Cranberry.TemplatePages where
+module Cranberry.TemplatePages (indexPage, errorPage, indexScript, stylesheet) where
 
 import Data.String ( IsString(..) )
 import Data.ByteString (ByteString)
@@ -12,34 +10,31 @@ import qualified Data.Text.Encoding as TE
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 
-s :: (IsString a) => String -> a
-s = fromString
-
 stylesheet :: MessageContent T.Text
 stylesheet = MessageContent "text/css" $ fromString "*{font-family:'Lato Bold','Noto Sans','Open Sans','OpenSans','Roboto',sans-serif;}"
 
-skeleton :: (ToMarkup a) => a -> Html -> Html -> Html
+skeleton :: String -> Html -> Html -> Html
 skeleton title head content = H.docTypeHtml $ do
   H.head $ do
     H.title (toHtml title)
-    H.meta ! A.charset (s "utf-8")
+    H.meta ! A.charset ("utf-8")
     head
   H.body content
 
 indexStyle :: Html
 indexStyle = do
-  H.meta ! A.name (s "viewport") ! A.content (s "width=device-width,height=device-height,interactive-widget=resizes-visual")
-  H.style ! A.type_ (s "text/css") $ s "body{padding:0;margin:0;}"
+  H.meta ! A.name "viewport" ! A.content "width=device-width,height=device-height,interactive-widget=resizes-visual"
+  H.style ! A.type_ "text/css" $ "body{padding:0;margin:0;}"
 
-indexPage :: Html
-indexPage = skeleton "Cranberry" indexStyle $ do
-  H.pre ! A.id (s "elm") $ mempty
-  H.script ! A.src (s "/_/index.js") ! A.type_ (s "application/javascript") $ mempty
-  H.script ! A.type_ (s "application/javascript") $ do
-    toHtml $ TE.decodeUtf8Lenient $(embedFile "web/src/Main.js")
+indexPage :: Bool -> Html
+indexPage oidcReturn = skeleton "Cranberry" indexStyle $ do
+  H.pre ! A.id "elm" $ mempty
+  H.script ! A.src "/_/index.js" ! A.type_ "application/javascript" $ mempty
+  H.script ! A.type_ "application/javascript" $ do
+    toHtml $ T.concat ["var oidc=", if oidcReturn then "true" else "false", ";", TE.decodeUtf8Lenient $(embedFile "web/src/Main.js")]
 
 errorPage :: String -> Html
-errorPage message = skeleton "Error" (H.link ! A.rel (s "stylesheet") ! A.href (s "/_/style.css")) $ do
+errorPage message = skeleton "Error" (H.link ! A.rel "stylesheet" ! A.href "/_/style.css") $ do
     H.h1 (toHtml $ "Error: " ++ message)
 
 indexScript :: MessageContent ByteString

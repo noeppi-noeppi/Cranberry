@@ -1,4 +1,4 @@
-module Cranberry.Database where
+module Cranberry.Database (PostgresConfig (..), StorageAdapter, connectDatabase, setupDatabase) where
 
 import Cranberry.Types
 import Opaleye
@@ -48,12 +48,13 @@ connectDatabase config = do
 setupDatabase :: PG.Connection -> IO ()
 setupDatabase con = PG.withTransaction con $ do
   _ <- PG.execute con (fromString "CREATE TABLE IF NOT EXISTS short_links (\
-    \name        TEXT PRIMARY KEY NOT NULL,\
-    \destination TEXT NOT NULL);") ()
+    \name             TEXT PRIMARY KEY NOT NULL,\
+    \destination      TEXT NOT NULL);") ()
   _ <- PG.execute con (fromString "CREATE TABLE IF NOT EXISTS access_tokens (\
-    \token       TEXT PRIMARY KEY NOT NULL,\
-    \username    TEXT NOT NULL,\
-    \expires     TIMESTAMP WITH TIME ZONE NOT NULL);") ()
+    \token            TEXT PRIMARY KEY NOT NULL,\
+    \username         TEXT NOT NULL,\
+    \permission_level INTEGER NOT NULL,\
+    \expires          TIMESTAMP WITH TIME ZONE NOT NULL);") ()
   return ()
 
 instance StorageAdapter PG.Connection where
@@ -79,26 +80,24 @@ instance StorageAdapter PG.Connection where
   listShortLinks con = do
     rs <- runSelect con shortLinkListSelect :: IO [(String, T.Text)]
     return $ Map.map URL $ Map.fromList rs
-  getUserForAccessToken con token = do
-    rs <- runSelect con $ accessTokenSelect token :: IO [String]
-    return $ listToMaybe rs
-  createAccessToken con user = do
+  getAccessTokenDetails con token = do
+    rs <- runSelect con $ accessTokenSelect token :: IO [(String, Int)]
+    return $ listToMaybe [(username, permissionLevelFromCode permissionCode) | (username, permissionCode) <- rs]
+  createAccessToken con user permissionLevel = do
     _ <- runDelete con accessTokenClean
     token <- randomAccessToken
-    success <- putNewAccessToken token user
+    success <- putNewAccessToken token user permissionLevel
     if success
       then return token
-      else createAccessToken con user
-    where putNewAccessToken :: String -> String -> IO Bool
-          putNewAccessToken token user = do
-            modifiedCount <- runInsert con $ accessTokenInsert token user (Time.calendarTimeTime 600)
+      else createAccessToken con user permissionLevel
+    where putNewAccessToken :: String -> String -> PermissionLevel -> IO Bool
+          putNewAccessToken token user permissionLevel = do
+            modifiedCount <- runInsert con $ accessTokenInsert token user permissionLevel (Time.calendarTimeTime 1200)
             return $ modifiedCount > 0
   revokeAccessToken con token = do
     _ <- runDelete con accessTokenClean
     _ <- runDelete con $ accessTokenDelete token
     return ()
-
-
 
 type SymmetricTable a = Table a a
 
@@ -107,34 +106,35 @@ tableShortLinks = table "short_links" $ P.p2 (
   tableField "name",
   tableField "destination")
 
-tableAccessTokens :: SymmetricTable (Field SqlText, Field SqlText, Field SqlTimestamptz)
-tableAccessTokens = table "access_tokens" $ P.p3 (
+tableAccessTokens :: SymmetricTable (Field SqlText, Field SqlText, Field SqlInt4, Field SqlTimestamptz)
+tableAccessTokens = table "access_tokens" $ P.p4 (
   tableField "token",
   tableField "username",
+  tableField "permission_level",
   tableField "expires")
 
 shortLinkListSelect :: Select (Field SqlText, Field SqlText)
 shortLinkListSelect = selectTable tableShortLinks
 
 shortLinkSelect :: String -> Select (Field SqlText)
-shortLinkSelect id = do
+shortLinkSelect linkId = do
   (name, dest) <- selectTable tableShortLinks
-  where_ (name .== sqlString id)
+  where_ (name .== sqlString linkId)
   return dest
 
 shortLinkInsert :: String -> URL -> Insert Int64
-shortLinkInsert id (URL dest) = Insert {
+shortLinkInsert linkId (URL dest) = Insert {
   iTable = tableShortLinks,
-  iRows = [(sqlString id, sqlStrictText dest)],
+  iRows = [(sqlString linkId, sqlStrictText dest)],
   iReturning = rCount,
   iOnConflict = Just doNothing
 }
 
 shortLinkUpdate :: String -> URL -> Update Int64
-shortLinkUpdate id (URL dest) = Update {
+shortLinkUpdate linkId (URL dest) = Update {
   uTable = tableShortLinks,
-  uUpdateWith = updateEasy $ \(_, _) -> (sqlString id, sqlStrictText dest),
-  uWhere = \(name, _) -> name .== sqlString id,
+  uUpdateWith = updateEasy $ \(_, _) -> (sqlString linkId, sqlStrictText dest),
+  uWhere = \(name, _) -> name .== sqlString linkId,
   uReturning = rCount
 }
 
@@ -145,23 +145,24 @@ shortLinkDelete id = Delete {
   dReturning = rCount
 }
 
-accessTokenSelect :: String -> Select (Field SqlText)
-accessTokenSelect token = do
-  (token, user, expires) <- selectTable tableAccessTokens
-  where_ (expires  .>= now)
-  return user
+accessTokenSelect :: String -> Select (Field SqlText, Field SqlInt4)
+accessTokenSelect requestedToken = do
+  (token, user, permissionLevel, expires) <- selectTable tableAccessTokens
+  where_ (expires .>= now)
+  where_ (token   .== sqlString requestedToken)
+  return (user, permissionLevel)
 
 accessTokenClean :: Delete Int64
 accessTokenClean = Delete {
   dTable = tableAccessTokens,
-  dWhere = \(_, _, expires) -> expires .< now,
+  dWhere = \(_, _, _, expires) -> expires .< now,
   dReturning = rCount
 }
 
-accessTokenInsert :: String -> String -> Time.CalendarDiffTime -> Insert Int64
-accessTokenInsert token user validFor = Insert {
+accessTokenInsert :: String -> String -> PermissionLevel -> Time.CalendarDiffTime -> Insert Int64
+accessTokenInsert token user permissionLevel validFor = Insert {
   iTable = tableAccessTokens,
-  iRows = [(sqlString token, sqlString user, addInterval now (sqlInterval validFor))],
+  iRows = [(sqlString token, sqlString user, sqlInt4 (permissionCodeFromLevel permissionLevel), addInterval now (sqlInterval validFor))],
   iReturning = rCount,
   iOnConflict = Just doNothing
 }
@@ -169,7 +170,7 @@ accessTokenInsert token user validFor = Insert {
 accessTokenDelete :: String -> Delete Int64
 accessTokenDelete token = Delete {
   dTable = tableAccessTokens,
-  dWhere = \(tk, _, _) -> tk .== sqlString token,
+  dWhere = \(tk, _, _, _) -> tk .== sqlString token,
   dReturning = rCount
 }
 
@@ -188,3 +189,15 @@ randomSequence len = sequence $ replicate len randomChar
           | i < 26 = Data.Char.chr $ 97 + i
           | i < 52 = Data.Char.chr $ 39 + i
           | i < 62 = Data.Char.chr $ i - 4
+
+permissionCodeFromLevel :: PermissionLevel -> Int
+permissionCodeFromLevel NoPermission = 0
+permissionCodeFromLevel CreateAnonymousShortLinks = 1
+permissionCodeFromLevel CreateNamedShortLinks = 2
+permissionCodeFromLevel ManageShortLinks = 3
+
+permissionLevelFromCode :: Int -> PermissionLevel
+permissionLevelFromCode 1 = CreateAnonymousShortLinks
+permissionLevelFromCode 2 = CreateNamedShortLinks
+permissionLevelFromCode 3 = ManageShortLinks
+permissionLevelFromCode _ = NoPermission

@@ -1,6 +1,7 @@
 module Cranberry.View exposing (..)
 
 import Cranberry.Model exposing (..)
+import List.Extra
 import Color
 import Html
 import Html.Attributes
@@ -53,7 +54,7 @@ view model = case model of
 modalView : ContentModel -> LayoutArgs -> Html.Html Msg
 modalView model args = case model.auth of
   Anonymous form -> if model.display.showLoginDialog
-    then doLayout args (pageView model args) (notifications model args) (Just (loginDialog form args))
+    then doLayout args (pageView model args) (notifications model args) (Just (loginDialog model.authMethods form args))
     else doLayout args (pageView model args) (notifications model args) Nothing
   _ -> doLayout args (pageView model args) (notifications model args) Nothing
 
@@ -116,7 +117,7 @@ topBarActions model = case model.auth of
   Anonymous _ -> [{
     icon = icon I.user,
     text = "Login",
-    onPress = Just (DspLoginVisible True)}, darkModeButton model]
+    onPress = Just (DspLoginShow)}, darkModeButton model]
 
 darkModeButton : ContentModel -> W.Button Msg
 darkModeButton model = {
@@ -178,9 +179,9 @@ managePageRowButton args title btnIcon message = case args.deviceClass of
   Phone -> W.iconButton (M.containedButton args.palette) {text = title, icon = btnIcon, onPress = Just message}
   _ -> W.textButton (M.containedButton args.palette) {text = title, onPress = Just message}
 
-loginDialog : LoginForm -> LayoutArgs -> W.Modal Msg
-loginDialog form args = {
-  onDismiss = Just (DspLoginVisible False),
+loginDialog : AuthMethods -> LoginForm -> LayoutArgs -> W.Modal Msg
+loginDialog authMethods form args = {
+  onDismiss = Just (DspLoginHide),
   content = column [centerX, centerY, spacing 5, padding 15, Border.rounded 5, Background.color (color args.palette.background)] [
     W.usernameInput (M.textInput args.palette) {
       chips = [],
@@ -194,21 +195,24 @@ loginDialog form args = {
       label = "Password",
       onChange = MsgChangePasswordInput,
       show = False} |> labeledInput args "Password",
-    row [centerX, spacing 5] [
-      W.textButton (M.outlinedButton args.palette) {
+    row [centerX, spacing 5] ([
+      (W.textButton (M.outlinedButton args.palette) {
         text = "Close",
-        onPress = Just (DspLoginVisible False)},
-      W.textButton (M.containedButton args.palette) {
+        onPress = Just (DspLoginHide)}, True),
+      (W.textButton (M.containedButton args.palette) {
         text = "Login",
-        onPress = Just MsgLogin}
-    ]
+        onPress = Just MsgLogin}, True),
+      (W.textButton (M.containedButton args.palette) {
+        text = "Single Sign-On",
+        onPress = Just MsgLoginOidc}, authMethods.oidc)
+    ] |> List.Extra.conditional)
   ]}
 
 labeledInput : LayoutArgs -> String -> Element Msg -> Element Msg
 labeledInput args title input = case args.deviceClass of
   Phone -> column [width fill, spacing 5, paddingXY 5 0] [
     el [alignLeft, Font.size 15] (title ++ ":" |> text),
-    el [ alignLeft, width fill ] input,
+    el [alignLeft, width fill] input,
     el [paddingXY 0 4] none]
   _ -> row [width fill, spacing 5] [
     el [ alignLeft ] (title ++ ":" |> text),

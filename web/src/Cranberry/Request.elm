@@ -3,8 +3,10 @@ module Cranberry.Request exposing (..)
 import Cranberry.Model exposing (..)
 import Http
 import Url
-import Base64
 import Json.Decode as J
+
+mimeText : String
+mimeText = "text/plain;charset=UTF-8"
 
 mimeUriList : String
 mimeUriList = "text/uri-list;charset=UTF-8"
@@ -13,7 +15,7 @@ accept : Http.Header
 accept = Http.header "Accept" "text/plain;charset=UTF-8, application/json, text/uri-list;charset=UTF-8"
 
 decodeMe : J.Decoder PayloadMe
-decodeMe = J.map2 PayloadMe
+decodeMe = J.map3 PayloadMe
   (J.field "user" (J.nullable J.string))
   (J.field "role" J.string |> J.andThen (\str -> case str of
     "none" -> J.succeed NoPermission
@@ -22,6 +24,7 @@ decodeMe = J.map2 PayloadMe
     "manage" -> J.succeed ManageShortLinks
     _ -> J.fail "Invalid role."
   ))
+  (J.field "auth_methods" (J.list J.string))
 
 decodeLogin : J.Decoder PayloadLogin
 decodeLogin = J.map2 PayloadLogin
@@ -30,9 +33,6 @@ decodeLogin = J.map2 PayloadLogin
 
 decodeShortLinkMap : J.Decoder ShortLinkMap
 decodeShortLinkMap = J.dict J.string
-
-authenticateBasic : String -> String -> Http.Header
-authenticateBasic username password = Http.header "Authorization" ("Basic " ++ Base64.encode (username ++ ":" ++ password))
 
 authenticateToken : Token -> Http.Header
 authenticateToken (Token token) = Http.header "Authorization" ("Bearer " ++ token)
@@ -80,8 +80,18 @@ requestMe model = authenticatedGet model {
 requestLogin : String -> String -> Cmd Msg
 requestLogin username password = Http.request {
   method = "POST",
-  url = "/_/api/grant",
-  headers = [ accept, authenticateBasic username password ],
+  url = "/_/api/login",
+  headers = [ accept ],
+  body = Http.stringBody mimeText (username ++ ":" ++ password),
+  expect = Http.expectJson RspLogin decodeLogin,
+  timeout = Nothing,
+  tracker = Nothing}
+
+requestOidcLogin : String -> Cmd Msg
+requestOidcLogin query = Http.request {
+  method = "GET",
+  url = "/_/api/oidc/login" ++ query,
+  headers = [ accept ],
   body = Http.emptyBody,
   expect = Http.expectJson RspLogin decodeLogin,
   timeout = Nothing,
@@ -89,7 +99,7 @@ requestLogin username password = Http.request {
 
 requestLogout : ContentModel -> Cmd Msg
 requestLogout model = authenticatedPost model {
-  url = "/_/api/revoke",
+  url = "/_/api/logout",
   body = Http.emptyBody,
   expect = Http.expectWhatever RspLogout}
 

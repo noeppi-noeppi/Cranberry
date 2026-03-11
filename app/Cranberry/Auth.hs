@@ -1,197 +1,53 @@
-module Cranberry.Auth where
+module Cranberry.Auth (AuthConfig (..), AuthBackend, authSetup, authListMethods, authLdap, OpenIdRedirect (..), OpenIdReturn (..), authOpenIdInit, authOpenId) where
 
 import Cranberry.Types
-import Cranberry.LdapParser (parseLdapFilter)
-import Control.Exception
-import Data.List.NonEmpty (NonEmpty((:|)))
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import qualified Ldap.Client as Ldap
-import qualified Ldap.Client.Bind as Ldap.Bind
-import qualified Ldap.Client.Search as Ldap.Search
+import Cranberry.Auth.Ldap
+import Cranberry.Auth.OpenId
 
-data InvalidLdapFilter = InvalidLdapFilter deriving Show
-instance Exception InvalidLdapFilter
-
-newtype InvalidPermission = InvalidPermission String deriving Show
-instance Exception InvalidPermission
-
-data LdapConfig = LdapConfig {
-  enabled :: Bool,
-  host :: String,
-  tls :: Bool,
-  port :: Int,
-  bindDn :: Maybe String,
-  bindPassword :: Maybe String,
-  baseDn :: String,
-  userSearch :: String,
-  attributes :: LdapAttributeConfig,
-  permissions :: LdapPermissionConfig
+data AuthConfig = AuthConfig {
+  anonymous :: PermissionLevel,
+  ldap :: LdapConfig,
+  oidc :: OpenIdConfig
 } deriving (Show, Generic)
 
-data LdapAttributeConfig = LdapAttributeConfig {
-  uid :: String,
-  membership :: String
-} deriving (Show, Generic)
-
-data LdapPermissionConfig = LdapPermissionConfig {
-  anonymous :: String,
-  groups :: LdapGroupSyncConfig
-} deriving (Show, Generic)
-
-data LdapGroupSyncConfig = LdapGroupSyncConfig {
-  createAnonymous :: String,
-  createNamed :: String,
-  manage :: String
-} deriving (Show, Generic)
-
-instance Configuration LdapConfig where
-  defaultConfiguration = LdapConfig {
-    enabled = False,
-    host ="localhost",
-    tls = False,
-    port = 389,
-    bindDn = Nothing,
-    bindPassword = Nothing,
-    baseDn = "",
-    userSearch = "(objectClass=person)",
-    attributes = defaultConfiguration,
-    permissions = defaultConfiguration
+instance Configuration AuthConfig where
+  defaultConfiguration = AuthConfig {
+    anonymous = NoPermission,
+    ldap = defaultConfiguration,
+    oidc = defaultConfiguration
   }
 
-instance Configuration LdapAttributeConfig where
-  defaultConfiguration = LdapAttributeConfig {
-    uid = "uid",
-    membership = "memberOf"
-  }
+authSetup :: StorageAdapter db => AuthConfig -> db -> URL -> IO (AuthBackend db)
+authSetup config db oidcRedirect = do
+  subSystemLdap <- ldapSetup (ldap config)
+  subSystemOpenId <- openIdSetup (oidc config) oidcRedirect
+  pure (AuthBackend (anonymous config) db subSystemLdap subSystemOpenId)
 
-instance Configuration LdapPermissionConfig where
-  defaultConfiguration = LdapPermissionConfig {
-    anonymous = "none",
-    groups = defaultConfiguration
-  }
+authListMethods :: StorageAdapter db => AuthBackend db -> [String]
+authListMethods backend = ["login" | ldapIsEnabled (subSystemLdap backend)] ++ ["oidc" | openIdIsEnabled (subSystemOpenId backend)]
 
-instance Configuration LdapGroupSyncConfig where
-  defaultConfiguration = LdapGroupSyncConfig {
-    createAnonymous = "",
-    createNamed = "",
-    manage = ""
-  }
+authLdap :: StorageAdapter db => AuthBackend db -> (String, String) -> IO AuthenticationResult
+authLdap backend credentials = ldapLogin (subSystemLdap backend) (authTokenStorage backend) credentials
 
-data StorageAdapter db => LdapAuthenticator db = LdapDisabled | LdapEnabled {
-  ldapHost :: Ldap.Host,
-  ldapPort :: Ldap.PortNumber,
-  ldapBindDn :: Ldap.Dn,
-  ldapBindPassword :: Ldap.Password,
-  ldapBaseDn :: Ldap.Dn,
-  ldapSearchFilter :: Ldap.Filter,
-  ldapUidAttribute :: Ldap.Attr,
-  ldapMembershipAttribute :: Ldap.Attr,
-  ldapAnonymousPermissionLevel :: PermissionLevel,
-  ldapGroups :: LdapGroupSyncConfig,
-  ldapTokenStorage :: db
+authOpenIdInit :: StorageAdapter db => AuthBackend db -> IO (Maybe OpenIdRedirect)
+authOpenIdInit backend = openIdRedirect (subSystemOpenId backend)
+
+authOpenId :: StorageAdapter db => AuthBackend db -> OpenIdReturn -> IO AuthenticationResult
+authOpenId backend ret = openIdLogin (subSystemOpenId backend) (authTokenStorage backend) ret
+
+data StorageAdapter db => AuthBackend db = AuthBackend {
+  authDefaultPermission :: PermissionLevel,
+  authTokenStorage :: db,
+  subSystemLdap :: LdapAuthenticator,
+  subSystemOpenId :: OpenIdAuthenticator
 }
 
-connectAuth :: StorageAdapter db => LdapConfig -> db -> IO (LdapAuthenticator db)
-connectAuth config db = if not $ enabled config
-  then return LdapDisabled
-  else do
-    searchFilter <- case parseLdapFilter $ userSearch config of
-      Just filter -> return filter
-      Nothing -> throw InvalidLdapFilter
-    anonymousPermissionLevel <- readPermissionLevel $ anonymous $ permissions config :: IO PermissionLevel
-    return $ LdapEnabled {
-      ldapHost = if tls config
-        then Ldap.Tls (host config) Ldap.defaultTlsSettings
-        else Ldap.Plain $ host config,
-      ldapPort = fromIntegral $ port config,
-      ldapBindDn = Ldap.Dn $ maybe T.empty T.pack $ bindDn config,
-      ldapBindPassword = Ldap.Password $ TE.encodeUtf8 $ maybe T.empty T.pack $ bindPassword config,
-      ldapBaseDn = Ldap.Dn $ T.pack $ baseDn config,
-      ldapSearchFilter = searchFilter,
-      ldapUidAttribute = Ldap.Attr $ T.pack $ uid $ attributes config,
-      ldapMembershipAttribute = Ldap.Attr $ T.pack $ membership $ attributes config,
-      ldapAnonymousPermissionLevel = anonymousPermissionLevel,
-      ldapGroups = groups $ permissions config,
-      ldapTokenStorage = db}
+instance StorageAdapter db => Disposable (AuthBackend db) where
+  dispose backend = dispose (authTokenStorage backend)
 
-instance StorageAdapter db => Disposable (LdapAuthenticator db)
-instance StorageAdapter db => Authenticator (LdapAuthenticator db) where
-  authenticate LdapDisabled Anonymous = return $ Success $ UserPrincipal {
-    userId = Nothing, userPermissionLevel = CreateNamedShortLinks, userAccessToken = Nothing}
-  authenticate LdapDisabled (Login username _) = return InvalidCredentials
-  authenticate LdapDisabled (Token _) = return InvalidCredentials
-  authenticate con@LdapEnabled { } Anonymous = return $ Success $ UserPrincipal {
-    userId = Nothing, userPermissionLevel = ldapAnonymousPermissionLevel con, userAccessToken = Nothing}
-  authenticate con@LdapEnabled { } credentials = do
-    res <- Ldap.with (ldapHost con) (ldapPort con) ldapTransaction
-    case res of
-      Left err -> putStrLn "LDAP error." >> print err >> return ServiceUnavailable
-      Right Nothing -> return InvalidCredentials
-      Right (Just user) -> return $ Success user
-    where ldapTransaction :: Ldap.Ldap -> IO (Maybe UserPrincipal)
-          ldapTransaction ldap = case credentials of
-            Login username password -> ldapTransactionUser ldap username password
-            Token token -> ldapTransactionToken ldap token
-
-          ldapTransactionUser :: Ldap.Ldap -> String -> String -> IO (Maybe UserPrincipal)
-          ldapTransactionUser ldap username password = do
-            _ <- Ldap.bind ldap (ldapBindDn con) (ldapBindPassword con)
-            search <- ldapSearchFor ldap username
-            case search of
-              Just entry -> ldapBindUser ldap username password entry
-              Nothing -> return Nothing
-
-          ldapTransactionToken :: Ldap.Ldap -> String -> IO (Maybe UserPrincipal)
-          ldapTransactionToken ldap token = do
-            usernameQuery <- getUserForAccessToken (ldapTokenStorage con) token
-            case usernameQuery of
-              Just username -> do
-                _ <- Ldap.bind ldap (ldapBindDn con) (ldapBindPassword con)
-                search <- ldapSearchFor ldap username
-                case search of
-                  Just entry -> return $ Just $ ldapConstructUser username entry (Just token)
-                  Nothing -> return Nothing 
-              Nothing -> return Nothing
- 
-          ldapUidFilter :: String -> Ldap.Filter
-          ldapUidFilter username = ldapUidAttribute con Ldap.:= (TE.encodeUtf8 . T.pack $ username)
-          ldapFullSearchFilter :: String -> Ldap.Filter
-          ldapFullSearchFilter username = Ldap.And (ldapSearchFilter con :| [ldapUidFilter username])
-          ldapSearchOptions :: Ldap.Search.Mod Ldap.Search
-          ldapSearchOptions = Ldap.scope Ldap.WholeSubtree <> Ldap.derefAliases Ldap.DerefAlways
-          ldapSearchAttributes :: [Ldap.Attr]
-          ldapSearchAttributes = [ldapUidAttribute con, ldapMembershipAttribute con]
-
-          ldapSearchFor :: Ldap.Ldap -> String -> IO (Maybe Ldap.SearchEntry)
-          ldapSearchFor ldap username = do
-            search <- Ldap.search ldap (ldapBaseDn con) ldapSearchOptions (ldapFullSearchFilter username) ldapSearchAttributes
-            case search of
-              [] -> return Nothing
-              [entry] -> return $ Just entry
-              _ -> putStrLn ("Non-unique LDAP qery for uid " ++ username) >> return Nothing
-
-          ldapBindUser :: Ldap.Ldap -> String -> String -> Ldap.SearchEntry -> IO (Maybe UserPrincipal)
-          ldapBindUser ldap username password search@(Ldap.SearchEntry userDn userAttrs) = do
-            bindResult <- Ldap.Bind.bindEither ldap userDn (Ldap.Password . TE.encodeUtf8 . T.pack $ password)
-            case bindResult of
-              Left err -> return Nothing
-              Right () -> return $ Just $ ldapConstructUser username search Nothing
-
-          ldapConstructUser :: String -> Ldap.SearchEntry -> Maybe String -> UserPrincipal
-          ldapConstructUser username (Ldap.SearchEntry _ userAttrs) maybeAccessToken = UserPrincipal {
-            userId = Just userId, userPermissionLevel = permissionLevel, userAccessToken = maybeAccessToken}
-            where decode :: Ldap.AttrValue -> String
-                  decode bytes = T.unpack $ TE.decodeUtf8Lenient bytes
-                  userId :: String
-                  userId = maybe username decode $ listToMaybe $ concatMap snd $ find ((ldapUidAttribute con ==) . fst) userAttrs
-                  groups :: [String]
-                  groups = map decode $ concatMap snd $ find ((ldapMembershipAttribute con ==) . fst) userAttrs
-                  groupPermissionLevel :: String -> PermissionLevel
-                  groupPermissionLevel group = highestPermissionLevel [
-                    if createAnonymous (ldapGroups con) == group then CreateAnonymousShortLinks else NoPermission,
-                    if createNamed (ldapGroups con) == group then CreateNamedShortLinks else NoPermission,
-                    if manage (ldapGroups con) == group then ManageShortLinks else NoPermission]
-                  permissionLevel :: PermissionLevel
-                  permissionLevel = highestPermissionLevel $ map groupPermissionLevel groups
+instance StorageAdapter db => Authenticator (AuthBackend db) where
+  authenticate :: StorageAdapter db => AuthBackend db -> UserCredentials -> IO AuthenticationResult
+  authenticate backend Anonymous = pure (Success $ UserPrincipal { userId = Nothing, userPermissionLevel = authDefaultPermission backend, userAccessToken = Nothing })
+  authenticate backend (Token token) = getAccessTokenDetails (authTokenStorage backend) token >>= \case
+    Nothing -> pure InvalidCredentials
+    Just (username, permissionLevel) -> pure (Success $ UserPrincipal { userId = Just username, userPermissionLevel = permissionLevel, userAccessToken = Just token })

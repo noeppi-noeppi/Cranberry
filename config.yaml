@@ -15,38 +15,38 @@ database:
   # The password to log into the database.
   password: password
 
-ldap:
-  # Whether Cranberry should allow user login via LDAP.
-  # If this is false, every username/password pair is rejected and anyone will be able
-  # to create short links.
-  enabled: false
-  # The host of the LDAP server.
-  host: localhost
-  # Whether the LDAP server uses TLS.
-  tls: false
-  # The port of the LDAP server.
-  port: 389
-  # A dn used to bind to the LDAP server.
-  binddn: null
-  # The password used to bind to the LDAP server.
-  bindpassword: null
-  # The base dn to search in.
-  basedn: ""
-  # An LDAP filter that filters for users. This will be ANDed with a filter for the username.
-  usersearch: "(objectClass=person)"
-  # Configure, which attributes Cranberry should read.
-  attributes:
-    # The attribute that contains the username to log in.
-    uid: "uid"
-    # The attribute that contains the groups, a user is a member of.
-    membership: "memberOf"
-  # Configure, how Cranberry translates LDAP entries to permissions.
-  permissions:
-    # What should users be able to do without being logged in?
-    #  create_anonymous: Create short links with a random id.
-    #  create_named:     Create short links with a custom id.
-    #  manage:           Create, view, edit and delete all short links.
-    anonymous: "none" # create_anonymous, create_named, manage
+auth:
+  # What permission level should unauthenticated users have?
+  #  none:             No permissions.
+  #  create_anonymous: Create short links with a random id.
+  #  create_named:     Create short links with a custom id.
+  #  manage:           Create, view, edit and delete all short links.
+  anonymous: "none"
+  ldap:
+    # Whether Cranberry should allow user login via LDAP.
+    enabled: false
+    # The host of the LDAP server.
+    host: localhost
+    # Whether the LDAP server uses TLS.
+    tls: false
+    # The port of the LDAP server.
+    port: 389
+    # A dn used to bind to the LDAP server.
+    binddn: null
+    # The password used to bind to the LDAP server.
+    bindpassword: null
+    # The base dn to search in.
+    basedn: ""
+    # An LDAP filter that filters for users. This will be ANDed with a filter for the username.
+    usersearch: "(objectClass=person)"
+    # Configure, which attributes Cranberry should read.
+    attributes:
+      # The attribute that contains the username to log in.
+      uid: "uid"
+      # The attribute that contains the groups, a user is a member of.
+      membership: "memberOf"
+    # Default permission level for authenticated users
+    defaultpermission: "create_anonymous"
     groups:
       # The dn of an LDAP group that allows to create short links with a random id.
       createanonymous: "" 
@@ -54,3 +54,24 @@ ldap:
       createnamed: ""
       # The dn of an LDAP group that allows to manage short links.
       manage: ""
+  oidc:
+    # Whether Cranberry should allow user login via OpenID Connect.
+    enabled: true
+    # The discovery URL of the OIDC provider.
+    discovery: ""
+    # The client id for the OIDC provider.
+    clientid: ""
+    # The client secret for the OIDC provider.
+    clientsecret: "ZxUHwRg2sipwhqVl6LeNrgrByumoalRk"
+    # Default permission level for authenticated users
+    defaultpermission: "create_anonymous"
+    roles:
+      # A role from the clientroles claim that has to be present in order for a suer to log in.
+      # If left empty, no specific role is required.
+      login: ""
+      # A role from the clientroles claim that grants permission to create anonymous short links.
+      createanonymous: "a"
+      # A role from the clientroles claim that grants permission to create named short links.
+      createnamed: "b"
+      # A role from the clientroles claim that grants permission to manage short links.
+      manage: "c"

@@ -8,6 +8,7 @@ type alias Flags = { viewportWidth : Int, viewportHeight : Int, prefersDarkTheme
 type alias ContentModel = {
   notifications : List Notification,
   auth : Authentication,
+  authMethods : AuthMethods,
   role : Role,
   shortLink : ShortLinkForm,
   linkMap : ShortLinkMap,
@@ -17,6 +18,7 @@ type Notification = Info String | Failure String
 type alias LoginForm = { username : String, password : String }
 type alias ShortLinkForm = { name : String, url : String }
 type Role = NoPermission | CreateAnonymousShortLinks | CreateNamedShortLinks | ManageShortLinks
+type alias AuthMethods = { login : Bool, oidc : Bool }
 type Authentication = Anonymous LoginForm | LoggedIn String Token
 
 allows : Role -> Role -> Bool
@@ -45,12 +47,12 @@ type Token = Token String
 type alias HttpMaybe a = Result Http.Error a
 type alias ViewportSize = { w: Int, h: Int }
 
-type Msg = MsgLogin | MsgLogout | MsgCreate | MsgReplace | MsgRevise LinkId | MsgDelete LinkId
+type Msg = MsgLogin | MsgLoginOidc | MsgLogout | MsgCreate | MsgReplace | MsgRevise LinkId | MsgDelete LinkId
   | MsgChangeUsernameInput String | MsgChangePasswordInput String | MsgChangeLinkIdInput LinkId 
   | MsgChangeUrlInput URL | MsgDiscardNotification Int | MsgRefreshLinkList | RspLogin (HttpMaybe PayloadLogin)
   | RspLogout (HttpMaybe ()) | RspMe (HttpMaybe PayloadMe) | RspListShortLinks (HttpMaybe ShortLinkMap)
   | RspCreate (HttpMaybe URL) | RspRevise (HttpMaybe URL) | RspDelete (HttpMaybe URL) | DspDarkMode Bool
-  | DspSwitchPage Int | DspLoginVisible Bool | SubViewport ViewportSize
+  | DspSwitchPage Int | DspLoginShow | DspLoginHide | SubViewport ViewportSize
 
 type alias PayloadLogin = { token : String, me : PayloadMe }
-type alias PayloadMe = { user : Maybe String, role : Role }
+type alias PayloadMe = { user : Maybe String, role : Role, authMethods : List String }

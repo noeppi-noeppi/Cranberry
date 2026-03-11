@@ -1,35 +1,21 @@
-FROM debian:bookworm AS base
-RUN apt-get update && apt-get install -y tini libffi8 libgmp10 libtinfo5 libpq5 zlib1g libtasn1-6 && apt-get clean
-
-FROM node:bookworm AS nodeenv
-RUN npm install --global uglify-js
+FROM debian:trixie AS base
+RUN apt-get update && apt-get install -y tini libffi8 libgmp10 libtinfo6 libpq5 zlib1g libtasn1-6 && apt-get clean
 
 FROM base AS build
-RUN apt-get install -y build-essential curl libffi-dev libgmp-dev libncurses5 libncurses-dev postgresql-client libpq-dev zlib1g-dev && apt-get clean
+RUN apt-get install -y build-essential curl git make libffi-dev libgmp-dev libncurses6 libncurses-dev postgresql-client libpq-dev zlib1g-dev elm-compiler node-uglify && apt-get clean
 WORKDIR /data/bin
 ENV PATH="/data/bin:${PATH}"
-RUN curl -Lo ghcup 'https://downloads.haskell.org/~ghcup/0.1.30.0/x86_64-linux-ghcup-0.1.30.0' && \
-    echo 'fea4499d0cbdf71c554bfb7febebb81d1bcd09a4c4cfb7a90905ef9bff4931cb  ghcup' | sha256sum -c && \
+RUN curl -Lo ghcup 'https://downloads.haskell.org/~ghcup/0.1.50.2/x86_64-linux-ghcup-0.1.50.2' && \
+    echo 'ff6288df9758211372d8242fe830d8e6be6a8365d9406f1c9bde144b7e744143  ghcup' | sha256sum -c && \
     chmod +x ghcup
-RUN ghcup --downloader curl install ghc --isolate /data --force --set 9.4.8 && rm -rf "${HOME}/.ghcup"
+RUN ghcup --downloader curl install ghc --isolate /data --force --set 9.14.1 && rm -rf "${HOME}/.ghcup"
 RUN ghcup --downloader curl install cabal --isolate /data/bin --set && cabal update && rm -rf "${HOME}/.ghcup"
-RUN curl -Lo - https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz | gunzip > elm && \
-    echo 'f8f12a61a61f64ac71a85d57284cc4d14fb81f1cbebb8b150839d9731034092e  elm' | sha256sum -c && \
-    chmod +x /data/bin/elm
-COPY --from=nodeenv --link /usr/local /node
-ENV PATH="/node/bin:${PATH}"
 COPY . /data/build
-WORKDIR /data/build/web
-RUN elm make --optimize --output=index.full.js src/Main.elm && \
-    npx uglify-js index.full.js --compress \
-      'pure_funcs=[F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9],pure_getters,keep_fargs=false,unsafe_comps,unsafe' | \
-    npx uglify-js --mangle --output index.js
-RUN mv src/Main.js src/Main.full.js && npx uglify-js src/Main.full.js --compress --mangle --enclose --output src/Main.js
 WORKDIR /data/build
-RUN cabal build && cp "$(cabal -v0 list-bin exe:cranberry)" /data/bin/cranberry
+RUN make clean && make all
 
 FROM base
-COPY --from=build /data/bin/cranberry /usr/local/bin/cranberry
+COPY --from=build /data/build/bin/cranberry /usr/local/bin/cranberry
 WORKDIR /data
 ENTRYPOINT [ "tini", "--" ]
-CMD [ "cranberry" ]
+CMD [ "cranberry", "/data/config.yaml" ]
