@@ -19,5 +19,6 @@ web/index.js: web/index.z.js
 	uglifyjs "$<" --mangle --output "$@"
 
 clean:
-	rm -f web/index.js web/index.full.js
+	rm -rf bin/
+	rm -f web/index.js web/index.z.js web/index.full.js
 	rm -rf dist-newstyle web/elm-stuff

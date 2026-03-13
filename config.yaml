@@ -2,8 +2,12 @@ server:
   # The URL at which the Cranberry instance will be reachable.
   # Cranberry currently does not support running under a subpath.
   self: "http://localhost/"
+  # Optional: Different URL for the management interface.
+  management: null
+  # IPv4 address to bind to. (IPv6 is not supported)
+  bind: 0.0.0.0
   # The port on which the HTTP-server should listen.
-  port: 80
+  port: 8080
 
 database:
   # The host at which the PostgreSQL database can be reached.
@@ -14,6 +18,10 @@ database:
   user: user
   # The password to log into the database.
   password: password
+  # The database to conect to
+  database: database
+  # Extra postgres option string
+  options: ""
 
 auth:
   # What permission level should unauthenticated users have?
@@ -56,13 +64,13 @@ auth:
       manage: ""
   oidc:
     # Whether Cranberry should allow user login via OpenID Connect.
-    enabled: true
+    enabled: false
     # The discovery URL of the OIDC provider.
     discovery: ""
     # The client id for the OIDC provider.
     clientid: ""
     # The client secret for the OIDC provider.
-    clientsecret: "ZxUHwRg2sipwhqVl6LeNrgrByumoalRk"
+    clientsecret: ""
     # Default permission level for authenticated users
     defaultpermission: "create_anonymous"
     roles:
@@ -70,8 +78,8 @@ auth:
       # If left empty, no specific role is required.
       login: ""
       # A role from the clientroles claim that grants permission to create anonymous short links.
-      createanonymous: "a"
+      createanonymous: ""
       # A role from the clientroles claim that grants permission to create named short links.
-      createnamed: "b"
+      createnamed: ""
       # A role from the clientroles claim that grants permission to manage short links.
-      manage: "c"
+      manage: ""

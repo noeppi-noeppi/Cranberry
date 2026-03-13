@@ -12,23 +12,34 @@ import qualified Data.Aeson as Aeson
 
 data WebserverConfig = WebserverConfig {
   self :: String,
+  management :: Maybe String,
+  bind :: String,
   port :: Int
 } deriving (Show, Generic)
 
 instance Configuration WebserverConfig where
   defaultConfiguration = WebserverConfig {
     self = "http://localhost/",
+    management = Nothing,
+    bind = "0.0.0.0",
     port = 80
   }
 
+managementSelf :: WebserverConfig -> String
+managementSelf config = case management config of
+  Just url -> url
+  Nothing -> (self config)
+
 launchServer :: StorageAdapter db => WebserverConfig -> db -> AuthConfig -> IO ()
 launchServer config db authConfig = do
-  let openIdRedirectURL = resolveOnBaseUrl (URL $ T.pack $ self config) "/_/api/oidc/return" :: URL
+  let openIdRedirectURL = resolveOnBaseUrl (URL $ T.pack $ managementSelf config) "/_/api/oidc/return" :: URL
   auth <- authSetup authConfig db openIdRedirectURL
   launchServer' config db auth
 
 launchServer' :: StorageAdapter db => WebserverConfig -> db -> AuthBackend db -> IO ()
-launchServer' config db auth = simpleHTTP serverConfig (route db auth $ URL $ T.pack $ self config)
+launchServer' config db auth = do
+  socket <- bindIPv4 (bind config) (port config)
+  simpleHTTPWithSocket socket serverConfig (route db auth $ URL $ T.pack $ self config)
   where serverConfig :: Conf
         serverConfig = Conf {
           Happstack.Server.port = port config,
@@ -56,7 +67,7 @@ route db auth baseURL = asum [
           method GET
           guardRq (\_ -> validShortLink id)
           liftSIO (getShortLink db id) $ \dest -> case dest of
-            Just url -> found url $ toResponse ()
+            Just url -> seeOther url $ toResponse ()
             Nothing -> errorPage notFound "Not Found"
         redirectRecursive :: ServerPart Response
         redirectRecursive = path $ \id -> do

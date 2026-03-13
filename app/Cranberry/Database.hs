@@ -8,6 +8,8 @@ import Opaleye.Internal.PrimQuery (tiSchemaName, tiTableName)
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.Char
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Data.Profunctor.Product as P
 import qualified Data.Time as Time
@@ -18,7 +20,8 @@ data PostgresConfig = PostgresConfig {
   port :: Int,
   database :: Maybe String,
   user :: String,
-  password :: Maybe String
+  password :: Maybe String,
+  options :: String
 } deriving (Show, Generic)
 
 instance Configuration PostgresConfig where
@@ -27,7 +30,8 @@ instance Configuration PostgresConfig where
     port = 5432,
     user = "postgres",
     password = Nothing,
-    database = Nothing
+    database = Nothing,
+    options = ""
   }
 
 instance Disposable PG.Connection where
@@ -42,7 +46,8 @@ connectDatabase config = do
     PG.connectPassword = maybe "" id $ password config,
     PG.connectDatabase = maybe (user config) id $ database config
   }
-  con <- PG.connect connectInfo
+  let connStr = BS.concat [PG.postgreSQLConnectionString connectInfo, " ", (T.encodeUtf8 $ T.pack $ options config)]
+  con <- PG.connectPostgreSQL connStr
   return con
 
 setupDatabase :: PG.Connection -> IO ()

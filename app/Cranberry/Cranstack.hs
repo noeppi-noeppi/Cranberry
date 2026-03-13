@@ -6,7 +6,7 @@ module Cranberry.Cranstack (
 ) where
 
 import Cranberry.Types
-import Happstack.Server hiding (port, unauthorized, found, require)
+import Happstack.Server hiding (port, unauthorized, found, seeOther, require)
 import Control.Applicative (asum)
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (try, SomeException)
@@ -56,6 +56,12 @@ unauthorized a = do
 found :: URL -> a -> ServerPart a
 found (URL url) a = do
   setResponseCode 302
+  setHeaderM "Location" $ T.unpack url
+  return a
+
+seeOther :: URL -> a -> ServerPart a
+seeOther (URL url) a = do
+  setResponseCode 303
   setHeaderM "Location" $ T.unpack url
   return a
 
