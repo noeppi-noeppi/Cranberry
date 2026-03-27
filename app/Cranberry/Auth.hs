@@ -1,4 +1,4 @@
-module Cranberry.Auth (AuthConfig (..), AuthBackend, authSetup, authListMethods, authLdap, OpenIdRedirect (..), OpenIdReturn (..), authOpenIdInit, authOpenId) where
+module Cranberry.Auth (AuthConfig (..), AuthBackend, authSetup, authAutoOpenId, authListMethods, authLdap, OpenIdRedirect (..), OpenIdReturn (..), authOpenIdInit, authOpenId) where
 
 import Cranberry.Types
 import Cranberry.Auth.Ldap
@@ -34,6 +34,9 @@ authOpenIdInit backend = openIdRedirect (subSystemOpenId backend)
 
 authOpenId :: StorageAdapter db => AuthBackend db -> OpenIdReturn -> IO AuthenticationResult
 authOpenId backend ret = openIdLogin (subSystemOpenId backend) (authTokenStorage backend) ret
+
+authAutoOpenId :: StorageAdapter db => AuthBackend db -> Bool
+authAutoOpenId backend = openIdIsAutoLogin (subSystemOpenId backend)
 
 data StorageAdapter db => AuthBackend db = AuthBackend {
   authDefaultPermission :: PermissionLevel,

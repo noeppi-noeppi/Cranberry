@@ -82,8 +82,14 @@ route db auth baseURL = asum [
           dir "index.js" $ serve Template.indexScript,
           dir "style.css" $ serve Template.stylesheet,
           dir "api" api,
-          serve (Template.indexPage False),
+          indexPage,
           errorPage notFound "Not found"]
+        indexPage = if authAutoOpenId auth
+          then do
+            nullDir
+            method GET
+            found (URL $ T.pack "/_/api/oidc") $ toResponse ()
+          else serve (Template.indexPage False)
         api :: ServerPart Response
         api = asum [
           dir "me" apiMe,

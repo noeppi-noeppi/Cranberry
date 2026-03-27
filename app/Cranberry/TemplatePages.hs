@@ -39,5 +39,3 @@ errorPage message = skeleton "Error" (H.link ! A.rel "stylesheet" ! A.href "/_/s
 
 indexScript :: MessageContent ByteString
 indexScript = MessageContent "application/javascript" $(embedFile "web/index.js")
-
-

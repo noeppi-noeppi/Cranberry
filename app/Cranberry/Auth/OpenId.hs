@@ -1,4 +1,4 @@
-module Cranberry.Auth.OpenId (OpenIdConfig (..), OpenIdRoleSyncConfig (..), OpenIdAuthenticator, OpenIdRedirect (..), OpenIdReturn (..), openIdSetup, openIdIsEnabled, openIdRedirect, openIdLogin) where
+module Cranberry.Auth.OpenId (OpenIdConfig (..), OpenIdRoleSyncConfig (..), OpenIdAuthenticator, OpenIdRedirect (..), OpenIdReturn (..), openIdSetup, openIdIsEnabled, openIdIsAutoLogin, openIdRedirect, openIdLogin) where
 
 import Cranberry.Types
 import Control.Exception
@@ -28,6 +28,7 @@ instance Exception InvalidOpenIdDiscovery
 
 data OpenIdConfig = OpenIdConfig {
   enabled :: Bool,
+  autoLogin :: Bool,
   discovery :: String,
   clientId :: String,
   clientSecret :: String,
@@ -45,6 +46,7 @@ data OpenIdRoleSyncConfig = OpenIdRoleSyncConfig {
 instance Configuration OpenIdConfig where
   defaultConfiguration = OpenIdConfig {
     enabled = False,
+    autoLogin = False,
     discovery = "",
     clientId = "",
     clientSecret = "",
@@ -61,6 +63,7 @@ instance Configuration OpenIdRoleSyncConfig where
   }
 
 data OpenIdAuthenticator = OpenIdDisabled | OpenIdEnabled {
+  oidcAutoLogin :: Bool,
   oidcProvider :: OIDC.Provider,
   oidcCredentials :: OIDC.Credentials,
   oidcHTTPS :: OIDC.HTTPS IO,
@@ -86,6 +89,7 @@ openIdSetup config redirectURL = if not $ enabled config
       Right (keys, _) -> pure keys
     redirectURI <- parseURI redirectURL
     pure OpenIdEnabled {
+      oidcAutoLogin = autoLogin config,
       oidcProvider = OIDC.Provider {
         OIDC.providerDiscovery = discoveryData,
         OIDC.providerKeys = jwkData
@@ -123,6 +127,10 @@ data OpenIdReturn = OpenIdReturn {
 openIdIsEnabled :: OpenIdAuthenticator -> Bool
 openIdIsEnabled OpenIdDisabled = False
 openIdIsEnabled OpenIdEnabled {} = True
+
+openIdIsAutoLogin :: OpenIdAuthenticator -> Bool
+openIdIsAutoLogin OpenIdEnabled {} = True
+openIdIsAutoLogin OpenIdDisabled = False
 
 openIdRedirect :: OpenIdAuthenticator -> IO (Maybe OpenIdRedirect)
 openIdRedirect OpenIdDisabled = pure Nothing

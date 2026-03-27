@@ -65,6 +65,8 @@ auth:
   oidc:
     # Whether Cranberry should allow user login via OpenID Connect.
     enabled: false
+    # Automatically redirect to oidc provider.
+    autologin: true
     # The discovery URL of the OIDC provider.
     discovery: ""
     # The client id for the OIDC provider.
