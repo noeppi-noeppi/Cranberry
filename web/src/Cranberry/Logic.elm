@@ -7,6 +7,7 @@ import Dict
 import Http
 
 type alias JSFlags = { viewport: ViewportSize, oidc: Maybe String, prefersDarkTheme: Bool }
+type alias JSPorts = { clipboardCopy: (String -> Cmd Msg) }
 
 init : JSFlags -> (Model, Cmd Msg)
 init flags = let request = case flags.oidc of
@@ -14,21 +15,21 @@ init flags = let request = case flags.oidc of
                              Nothing -> requestMeAnonymous
                in (Undecided {viewportWidth = flags.viewport.w, viewportHeight = flags.viewport.h, prefersDarkTheme = flags.prefersDarkTheme}, request)
 
-update : Msg -> Model -> (Model, Cmd Msg)
-update msg model = case (msg, model) of
+update : JSPorts -> Msg -> Model -> (Model, Cmd Msg)
+update ports msg model = case (msg, model) of
   (_, Failed) -> (Failed, Cmd.none)
   (SubViewport {w, h}, Undecided flags) -> (Undecided {flags | viewportWidth = w, viewportHeight = h}, Cmd.none)
   (SubViewport {w, h}, Model flags content) -> (Model {flags | viewportWidth = w, viewportHeight = h} content, Cmd.none)
   (RspMe (Ok me), Undecided flags) -> case initContent flags me of
     (newContent, cmd) -> (Model flags newContent, cmd)
   (RspLogin (Ok login), Undecided flags) -> case initContent flags login.me of
-    (initialContent, _) -> case updateContent (RspLogin (Ok login)) initialContent of
+    (initialContent, _) -> case updateContent ports (RspLogin (Ok login)) initialContent of
       -- discard action from initContent as it might attempt to request the list of short links without a token
       (newContent, cmd) -> (Model flags newContent, cmd)
   (RspMe (Err _), Undecided _) -> (Failed, Cmd.none)
   (RspLogin (Err _), Undecided _) -> (Failed, Cmd.none)
   (_, Undecided flags) -> (Undecided flags, Cmd.none)
-  (_, Model flags content) -> case updateContent msg content of
+  (_, Model flags content) -> case updateContent ports msg content of
     (newContent, cmd) -> (Model flags newContent, cmd)
 
 initContent : Flags -> PayloadMe -> (ContentModel, Cmd Msg)
@@ -61,8 +62,8 @@ reportError model err = case err of
   Http.BadStatus code -> (Failure ("Request failure: " ++ String.fromInt code) |> notify model, Cmd.none)
   Http.BadBody errorMessage -> (Failure ("Unexpected response: " ++ errorMessage) |> notify model, Cmd.none)
 
-updateContent : Msg -> ContentModel -> (ContentModel, Cmd Msg)
-updateContent msg model = case (msg, model) of
+updateContent : JSPorts -> Msg -> ContentModel -> (ContentModel, Cmd Msg)
+updateContent ports msg model = case (msg, model) of
   (MsgLogin, {auth, display}) -> case auth of
     Anonymous form -> ({model | auth = Anonymous {username = "", password = ""}, display = {display | showLoginDialog = False}}, requestLogin form.username form.password)
     LoggedIn _ _ -> (Failure "Already logged in." |> notify model, Cmd.none)
@@ -80,7 +81,7 @@ updateContent msg model = case (msg, model) of
     (_, "") -> (Failure "Missing short link URL." |> notify model, Cmd.none)
     (name, url) -> ({model | shortLink = {name = "", url = ""}}, requestRevise model name url)
   (MsgRevise linkId, {linkMap, display}) -> case Dict.get linkId linkMap of
-    Just url -> ({model | shortLink = {name = linkId, url = url}, display = {display | page = 0}}, Cmd.none)
+    Just {target} -> ({model | shortLink = {name = linkId, url = target}, display = {display | page = 0}}, Cmd.none)
     Nothing -> (Failure "Unknown short link to revise." |> notify model, Cmd.none)
   (MsgDelete linkId, _) -> (model, requestDelete model linkId)
   (MsgChangeUsernameInput input, {auth}) -> case auth of
@@ -91,15 +92,16 @@ updateContent msg model = case (msg, model) of
     LoggedIn _ _ -> (model, Cmd.none)
   (MsgChangeLinkIdInput input, {shortLink}) -> ({ model | shortLink = {shortLink | name = input} }, Cmd.none)
   (MsgChangeUrlInput input, {shortLink}) -> ({model | shortLink = {shortLink | url = input}}, Cmd.none)
+  (MsgClipboard text, _) -> (model, ports.clipboardCopy text)
   (MsgDiscardNotification idx, {notifications}) -> ({model | notifications = (List.take idx notifications) ++ (List.drop (idx + 1) notifications) }, Cmd.none)
   (MsgRefreshLinkList, _) -> (model, maybeRefreshLinkMap model)
   (RspMe (Ok me), _) -> ({model | role = me.role}, maybeRefreshLinkMap model)
   (RspLogin (Ok login), _) -> let newModel = {model | role = login.me.role, auth = LoggedIn (Maybe.withDefault "<unknown>" login.me.user) (Token login.token)} in (newModel, maybeRefreshLinkMap newModel)
   (RspLogout (Ok ()), _) -> let newModel = {model | auth = Anonymous {username = "", password = ""}, role = NoPermission} in (newModel, requestMe newModel)
   (RspListShortLinks (Ok links), _) -> ({model | linkMap = links}, Cmd.none)
-  (RspCreate (Ok url), _) -> (Info ("Link created: " ++ url) |> notify model, maybeRefreshLinkMap model)
-  (RspRevise (Ok url), _) -> (Info ("Link revised: " ++ url) |> notify model, maybeRefreshLinkMap model)
-  (RspDelete (Ok url), _) -> (Info ("Link deleted: " ++ url) |> notify model, maybeRefreshLinkMap model)
+  (RspCreate (Ok url), _) -> (Info ("Link created: " ++ url) (Just url) |> notify model, maybeRefreshLinkMap model)
+  (RspRevise (Ok url), _) -> (Info ("Link revised: " ++ url) (Just url) |> notify model, maybeRefreshLinkMap model)
+  (RspDelete (Ok url), _) -> (Info ("Link deleted: " ++ url) (Just url) |> notify model, maybeRefreshLinkMap model)
   (RspMe (Err _), _) -> (Failure "Could retrieve self" |> notify model, Cmd.none)
   (RspLogin (Err err), _) -> case err of
     Http.BadStatus 401 -> (Failure "Invalid credentials" |> notify model, Cmd.none)

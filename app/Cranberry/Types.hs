@@ -55,11 +55,12 @@ class Disposable a => StorageAdapter a where
   putNewShortLink :: a -> String -> URL -> IO Bool
   putRandomShortLink :: a -> URL -> IO String
   deleteShortLink :: a -> String -> IO ()
-  listShortLinks :: a -> IO (Map.Map String URL)
+  listShortLinks :: a -> IO (Map.Map String ShortLink)
   getAccessTokenDetails :: a -> String -> IO (Maybe (String, PermissionLevel))
   createAccessToken :: a -> String -> PermissionLevel -> IO String
   revokeAccessToken :: a -> String -> IO ()
 
+data ShortLink = ShortLink { shortLinkURL :: URL, shortLinkRandom :: Bool }
 data PermissionLevel = NoPermission | CreateAnonymousShortLinks | CreateNamedShortLinks | ManageShortLinks deriving (Eq, Ord, Show)
 data UserCredentials = Anonymous | Token { accessToken :: String } deriving Eq
 data AuthenticationResult = Success UserPrincipal | InvalidCredentials | ServiceUnavailable deriving Show

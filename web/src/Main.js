@@ -18,4 +18,5 @@ if (oidc) {
     window.history.pushState({},"", "/_");
 }
 
+app.ports.clipboardCopy.subscribe(function (text) { navigator.clipboard.writeText(text) })
 window.addEventListener('resize', function() { app.ports.viewport.send(viewportFlags()) });

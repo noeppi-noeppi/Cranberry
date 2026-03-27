@@ -63,19 +63,19 @@ notifications model args = model.notifications |> notifList 0 args |> column [pa
 
 notifList : Int -> LayoutArgs -> List Notification -> List (Element Msg)
 notifList idx args list = case list of
-  (Info msg) :: xs -> notifListItem msg idx args args.palette.secondary args.palette.on.secondary :: notifList (idx + 1) args xs
-  (Failure msg) :: xs -> notifListItem msg idx args args.palette.error args.palette.on.error :: notifList (idx + 1) args xs
+  (Info msg Nothing) :: xs -> notifListItem msg [] idx args args.palette.secondary args.palette.on.secondary :: notifList (idx + 1) args xs
+  (Info msg (Just copy)) :: xs -> notifListItem msg [copyButton copy] idx args args.palette.secondary args.palette.on.secondary :: notifList (idx + 1) args xs
+  (Failure msg) :: xs -> notifListItem msg [] idx args args.palette.error args.palette.on.error :: notifList (idx + 1) args xs
   [] -> []
 
-notifListItem : String -> Int -> LayoutArgs -> Color.Color -> Color.Color -> Element Msg
-notifListItem msg idx args bg fg = row [
+notifListItem : String -> List (Element Msg) -> Int -> LayoutArgs -> Color.Color -> Color.Color -> Element Msg
+notifListItem msg btns idx args bg fg = row [
   width (ifMobile args (fill) (minimum 300 shrink)), alignRight, padding 10, spacing 3, Border.rounded 5,
-  Background.color (color bg), Font.color (color fg)] [
+  Background.color (color bg), Font.color (color fg)] ([
      (case args.deviceClass of
        Phone -> el [alignLeft, padding 5, width fill, Font.size 16, scrollbarX, htmlAttribute (Html.Attributes.style "margin" "-5px")] (text msg)
        _ -> el [alignLeft, padding 0] (text msg)
-     ),
-     Input.button [alignRight, padding 0] {onPress = Just (MsgDiscardNotification idx), label = I.toHtml [] I.x |> html}]
+     )] ++ btns ++ [Input.button [alignRight, padding 0] {onPress = Just (MsgDiscardNotification idx), label = I.toHtml [] I.x |> html}])
 
 pageView : ContentModel -> LayoutArgs -> Element Msg
 pageView model args = column [ width fill, height fill ] [
@@ -157,20 +157,24 @@ mainPageContent model args = column [centerX, centerY, spacing 5] [
     else none]]
 
 managePageView : ContentModel -> LayoutArgs -> Element Msg
-managePageView model args = let separator = el [width fill, paddingXY 0 1, Background.color (colorWithAlpha args.palette.on.background 0.05)] none
-  in column [width fill, spacing 5, paddingXY 10 0] (Dict.toList model.linkMap |> List.map (managePageRow args) |> interleave separator |> \l -> l ++ [el [paddingXY 5 0] none])
+managePageView model args =
+  let separator = el [width fill, paddingXY 0 1, Background.color (colorWithAlpha args.palette.on.background 0.05)] none in
+  let strongSeparator = el [width fill, paddingXY 0 1, Background.color (color args.palette.on.background)] none in
+  let namedLinks = Dict.toList model.linkMap |> List.filter (\(_,entry) -> not entry.random) |> List.map (managePageRow args) |> interleave separator in
+  let anonLinks = Dict.toList model.linkMap |> List.filter (\(_,entry) -> entry.random) |> List.map (managePageRow args) |> interleave separator in
+  column [width fill, spacing 5, paddingXY 10 0] ((namedLinks ++ [strongSeparator] ++ anonLinks) |> \l -> l ++ [el [paddingXY 5 0] none])
 
-managePageRow : LayoutArgs -> (LinkId, URL) -> Element Msg
-managePageRow args (linkId, url) = case args.deviceClass of
+managePageRow : LayoutArgs -> (LinkId, ShortLinkEntry) -> Element Msg
+managePageRow args (linkId, entry) = case args.deviceClass of
   Phone -> row [width fill, spacing 5] [
     column ([width fill, clipX, padding 5, spacing 4, centerY] ++ fadeOutMask) [
-      el [Font.size 18] (text linkId),
-      el [Font.size 18] (text url)],
+      el [Font.size 18] (Element.link [Font.color (color args.palette.primary)] {url = entry.link, label = text linkId}),
+      el [Font.size 18] (text entry.target)],
     managePageRowButton args "Edit" (icon I.edit) (MsgRevise linkId),
     managePageRowButton args "Delete" (icon I.trash2) (MsgDelete linkId)]
   _ -> row [width fill, spacing 5] [
-    el ([width (fillPortion 1), clipX, padding 5] ++ fadeOutMask) (text linkId),
-    el ([width (fillPortion 5), clipX, padding 5] ++ fadeOutMask) (text url),
+    el ([width (fillPortion 1), clipX, padding 5] ++ fadeOutMask) (Element.link [Font.color (color args.palette.primary)] {url = entry.link, label = text linkId}),
+    el ([width (fillPortion 5), clipX, padding 5] ++ fadeOutMask) (text entry.target),
     managePageRowButton args "Edit" (icon I.edit) (MsgRevise linkId),
     managePageRowButton args "Delete" (icon I.trash2) (MsgDelete linkId)]
 
@@ -217,6 +221,9 @@ labeledInput args title input = case args.deviceClass of
   _ -> row [width fill, spacing 5] [
     el [ alignLeft ] (title ++ ":" |> text),
     el [ alignRight ] input]
+
+copyButton : String -> Element Msg
+copyButton content = Input.button [alignRight, paddingXY 5 0] {onPress = Just (MsgClipboard content), label = I.toHtml [] I.copy |> html}
 
 ifMobile : LayoutArgs -> a -> a -> a
 ifMobile args mobile desktop = case args.deviceClass of

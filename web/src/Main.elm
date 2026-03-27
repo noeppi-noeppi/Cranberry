@@ -6,6 +6,7 @@ import Cranberry.Model exposing (..)
 import Cranberry.View exposing (view)
 
 port viewport : (ViewportSize -> msg) -> Sub msg
+port clipboardCopy : String -> Cmd msg
 
 main : Program JSFlags Model Msg
-main = Browser.element { init = init, update = update, view = view, subscriptions = \_ -> viewport SubViewport }
+main = Browser.element { init = init, update = update { clipboardCopy = clipboardCopy }, view = view, subscriptions = \_ -> viewport SubViewport }

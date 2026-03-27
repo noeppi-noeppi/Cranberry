@@ -32,7 +32,10 @@ decodeLogin = J.map2 PayloadLogin
   (J.field "me" decodeMe)
 
 decodeShortLinkMap : J.Decoder ShortLinkMap
-decodeShortLinkMap = J.dict J.string
+decodeShortLinkMap = J.dict (J.map3 ShortLinkEntry
+  (J.field "link" J.string)
+  (J.field "target" J.string)
+  (J.field "random" J.bool))
 
 authenticateToken : Token -> Http.Header
 authenticateToken (Token token) = Http.header "Authorization" ("Bearer " ++ token)

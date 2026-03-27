@@ -5,6 +5,7 @@ import Cranberry.Auth
 import Cranberry.Cranstack
 import qualified Cranberry.TemplatePages as Template
 import qualified Happstack.Server
+import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.ByteString as BS
@@ -158,7 +159,7 @@ route db auth baseURL = asum [
           nullDir
           method GET
           require auth ManageShortLinks $ do
-            liftSIO (listShortLinks db) $ \linkMap -> ok $ toResponse $ Aeson.toJSON linkMap
+            liftSIO (M.mapWithKey (\linkId (ShortLink url random) -> ShortLinkEntry url (resolveOnBaseUrl baseURL $ T.pack linkId) random) <$> listShortLinks db) $ \linkMap -> ok $ toResponse $ Aeson.toJSON linkMap
         apiRevise :: ServerPart Response
         apiRevise = do
           method POST
@@ -200,4 +201,12 @@ data TokenResponse = TokenResponse {
   me :: MeResponse
 } deriving Generic
 instance Aeson.ToJSON TokenResponse where
+  toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+data ShortLinkEntry = ShortLinkEntry {
+  target :: URL,
+  link :: URL,
+  random :: Bool
+} deriving Generic
+instance Aeson.ToJSON ShortLinkEntry where
   toEncoding = Aeson.genericToEncoding Aeson.defaultOptions

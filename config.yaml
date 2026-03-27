@@ -74,7 +74,7 @@ auth:
     # Default permission level for authenticated users
     defaultpermission: "create_anonymous"
     roles:
-      # A role from the clientroles claim that has to be present in order for a suer to log in.
+      # A role from the clientroles claim that has to be present in order for a user to log in.
       # If left empty, no specific role is required.
       login: ""
       # A role from the clientroles claim that grants permission to create anonymous short links.

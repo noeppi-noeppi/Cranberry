@@ -54,7 +54,8 @@ setupDatabase :: PG.Connection -> IO ()
 setupDatabase con = PG.withTransaction con $ do
   _ <- PG.execute con (fromString "CREATE TABLE IF NOT EXISTS short_links (\
     \name             TEXT PRIMARY KEY NOT NULL,\
-    \destination      TEXT NOT NULL);") ()
+    \destination      TEXT NOT NULL,\
+    \random           BOOLEAN NOT NULL);") ()
   _ <- PG.execute con (fromString "CREATE TABLE IF NOT EXISTS access_tokens (\
     \token            TEXT PRIMARY KEY NOT NULL,\
     \username         TEXT NOT NULL,\
@@ -68,14 +69,12 @@ instance StorageAdapter PG.Connection where
     return $ URL <$> listToMaybe rs
   putShortLink con id dest = PG.withTransaction con $ do
     _ <- runUpdate con $ shortLinkUpdate id dest
-    _ <- runInsert con $ shortLinkInsert id dest
+    _ <- runInsert con $ shortLinkInsert id False dest
     return ()
-  putNewShortLink con id dest = do
-    modifiedCount <- runInsert con $ shortLinkInsert id dest
-    return $ modifiedCount > 0
+  putNewShortLink con id dest = doPutNewShortLink con id False dest
   putRandomShortLink con url = do
     id <- randomId
-    success <- putNewShortLink con id url
+    success <- doPutNewShortLink con id True url
     if success
       then return id
       else putRandomShortLink con url
@@ -83,8 +82,8 @@ instance StorageAdapter PG.Connection where
     _ <- runDelete con $ shortLinkDelete id
     return ()
   listShortLinks con = do
-    rs <- runSelect con shortLinkListSelect :: IO [(String, T.Text)]
-    return $ Map.map URL $ Map.fromList rs
+    rs <- runSelect con shortLinkListSelect :: IO [(String, T.Text, Bool)]
+    return $ Map.fromList (map (\(name, url, random) -> (name, ShortLink (URL url) random)) rs)
   getAccessTokenDetails con token = do
     rs <- runSelect con $ accessTokenSelect token :: IO [(String, Int)]
     return $ listToMaybe [(username, permissionLevelFromCode permissionCode) | (username, permissionCode) <- rs]
@@ -104,12 +103,18 @@ instance StorageAdapter PG.Connection where
     _ <- runDelete con $ accessTokenDelete token
     return ()
 
+doPutNewShortLink :: PG.Connection -> String -> Bool -> URL -> IO Bool
+doPutNewShortLink con id random dest = do
+    modifiedCount <- runInsert con $ shortLinkInsert id random dest
+    return $ modifiedCount > 0
+
 type SymmetricTable a = Table a a
 
-tableShortLinks :: SymmetricTable (Field SqlText, Field SqlText)
-tableShortLinks = table "short_links" $ P.p2 (
+tableShortLinks :: SymmetricTable (Field SqlText, Field SqlText, Field SqlBool)
+tableShortLinks = table "short_links" $ P.p3 (
   tableField "name",
-  tableField "destination")
+  tableField "destination",
+  tableField "random")
 
 tableAccessTokens :: SymmetricTable (Field SqlText, Field SqlText, Field SqlInt4, Field SqlTimestamptz)
 tableAccessTokens = table "access_tokens" $ P.p4 (
@@ -118,19 +123,19 @@ tableAccessTokens = table "access_tokens" $ P.p4 (
   tableField "permission_level",
   tableField "expires")
 
-shortLinkListSelect :: Select (Field SqlText, Field SqlText)
+shortLinkListSelect :: Select (Field SqlText, Field SqlText, Field SqlBool)
 shortLinkListSelect = selectTable tableShortLinks
 
 shortLinkSelect :: String -> Select (Field SqlText)
 shortLinkSelect linkId = do
-  (name, dest) <- selectTable tableShortLinks
+  (name, dest, _) <- selectTable tableShortLinks
   where_ (name .== sqlString linkId)
   return dest
 
-shortLinkInsert :: String -> URL -> Insert Int64
-shortLinkInsert linkId (URL dest) = Insert {
+shortLinkInsert :: String -> Bool -> URL -> Insert Int64
+shortLinkInsert linkId random (URL dest) = Insert {
   iTable = tableShortLinks,
-  iRows = [(sqlString linkId, sqlStrictText dest)],
+  iRows = [(sqlString linkId, sqlStrictText dest, sqlBool random)],
   iReturning = rCount,
   iOnConflict = Just doNothing
 }
@@ -138,15 +143,15 @@ shortLinkInsert linkId (URL dest) = Insert {
 shortLinkUpdate :: String -> URL -> Update Int64
 shortLinkUpdate linkId (URL dest) = Update {
   uTable = tableShortLinks,
-  uUpdateWith = updateEasy $ \(_, _) -> (sqlString linkId, sqlStrictText dest),
-  uWhere = \(name, _) -> name .== sqlString linkId,
+  uUpdateWith = updateEasy $ \(_, _, random) -> (sqlString linkId, sqlStrictText dest, random),
+  uWhere = \(name, _, _) -> name .== sqlString linkId,
   uReturning = rCount
 }
 
 shortLinkDelete :: String -> Delete Int64
 shortLinkDelete id = Delete {
   dTable = tableShortLinks,
-  dWhere = \(name, _) -> name .== sqlString id,
+  dWhere = \(name, _, _) -> name .== sqlString id,
   dReturning = rCount
 }
 
